@@ -140,6 +140,10 @@ Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.u
 - [`docs/TECHNICAL.md`](docs/TECHNICAL.md): cómo funciona cada animación y qué métodos se enganchan.
 - [`docs/LIQUID_GLASS.md`](docs/LIQUID_GLASS.md): la receta del cristal.
 
+## Próximamente
+
+En camino: rebote elástico global, más estilos de recientes, efectos en el fondo de pantalla, ajustes que se aplican sin reiniciar (libxposed API 102), vista previa dentro de la app, perfiles predefinidos y más. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/olilio3/HyperTweak/issues).
+
 ## Créditos
 
 - **Refracción del borde:** la lente de [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) (Apache-2.0, © 2025 Kyant), portada a los sombreadores AGSL del centro de control y de la barra de la app. Desplaza la imagen `circleMap(1 − d/altura) · cantidad` hacia dentro a lo largo del gradiente del rectángulo redondeado, con dispersión cromática de 7 muestras.
