@@ -11,11 +11,14 @@
 
 ---
 
+> **A Note on Development:**  
+> This project was initially built using AI to prototype the core concepts quickly. However, I am currently learning Java and **looking forward to** refactoring, maintaining, and coding everything myself as I grow as a developer! Feedback and contributions are more than welcome.
+
 HyperTweak adds two kinds of things to HyperOS:
 - **Launcher and System UI animations** that it doesn't ship with.
 - **A liquid-glass control center** with edge refraction.
 
-It doesn't modify any APK: everything runs through LSPosed and most settings apply live from the app.
+It doesn't modify any APK: everything runs through LSPosed. Sliders apply live from the app; turning a feature on or off needs a quick launcher or System UI restart.
 
 > [!WARNING]
 > **Only tested on a Redmi 14C with HyperOS 3 (Android 16).** I can't guarantee it works on other devices.
@@ -102,66 +105,4 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
 1. Install the APK from [Releases](../../releases).
 2. In LSPosed, enable **HyperTweak** and tick the **System launcher** and **System UI** scopes.
 3. Reboot.
-4. Open HyperTweak and grant root when asked (it's only used to restart the launcher and System UI).
-5. In **About → Compatibility**, every part should show **Active**.
-
-### Coming from Ice Home, Telón or KashiPlus
-HyperTweak merges those three modules into one.
-- **Ice Home:** HyperTweak installs over it and keeps your settings, because it uses the same package (`com.icehome.up`).
-- **Telón and KashiPlus:** uninstall them and remove them from LSPosed. While they're installed, HyperTweak doesn't load that part (two hooks on the same thing would break System UI), and the app tells you so.
-
-### Updating
-1. Install the new version over the old one.
-2. Restart the launcher and System UI from the **Home** tab, or reboot.
-
-If a part is still running the previous version, the app tells you.
-
-## Safe mode
-
-- **Launcher:** if it crashes and restarts 4 times within a minute, HyperTweak stops loading its animations there. The launcher keeps working normally.
-- **System UI:** if it restarts several times in a row, the curtain and the control center glass are turned off.
-
-In both cases the app shows a notice with a **Turn back on** button.
-
-If the phone doesn't boot properly, disable the module in LSPosed, or boot into Magisk/KernelSU safe mode.
-
-## Troubleshooting
-
-| Problem | What to do |
-|---|---|
-| **Compatibility** shows "Not detected" | Check that the module and both scopes are enabled in LSPosed, then reboot. |
-| I turn a feature on or off and nothing changes | Launcher features and the curtain apply after restarting the launcher or System UI: **Home → Restart…**. Grant root to HyperTweak so the restart is instant. |
-| The restart buttons don't work | Grant root to HyperTweak in Magisk, KernelSU or APatch. Without root, HyperTweak asks System UI to do it, which may not work on every phone. |
-| The control center has no glass | Restart System UI from **Home**. Control centers other than the stock one and the Mods Center iOS one may not be recognised; send the log. |
-| It stutters | Lower **Resolution** and set **Frames per second** to your screen's refresh rate (in *Launcher → Opening and closing apps* and in *System → Curtain*). |
-
-## Building
-
-- **With the Android SDK:** `./gradlew assembleRelease`.
-- **Without the SDK:** `TOOLS=/path bash local-build/build.sh`.
-  - Uses JDK 17, the API 35 `android.jar`, jadx (D8), apktool (aapt2) and uber-apk-signer.
-  - The version comes from `Version.java`.
-  - The APK ends up in `local-build/out/HyperTweak.apk`.
-- **Shader checks:** the AGSL shaders are validated with skia-python before building, and the OpenGL ones with Mesa (scripts in `local-build/`).
-
-### Layout
-- `com.icehome.up`:
-  - Launcher features: genie, recents, folders, widget stack.
-  - The app: settings, glass bar, translations (`I18n`) and settings provider.
-  - LSPosed entry point (`MainHook`).
-- `com.icehome.up.telon`: curtain transitions and the System UI safe mode.
-- `com.icehome.up.cc`: control center liquid glass.
-- [`docs/TECHNICAL.md`](docs/TECHNICAL.md): how each animation works and which methods are hooked (in Spanish).
-
-## Roadmap
-
-Coming next: global elastic bounce, more recents styles, wallpaper effects, settings that apply without restarting (libxposed API 102), an in-app preview, presets and more. See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/olilio3/HyperTweak/issues).
-
-## Credits
-
-- **Edge refraction:** the [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) lens (Apache-2.0, © 2025 Kyant), ported to the AGSL shaders of the control center and the app's bar.
-- **Launcher and control center mods it was tested with:** Kashi, from Mods Center.
-
-## License
-
-[Apache-2.0](LICENSE). See also [NOTICE](NOTICE).
+4. Open HyperTweak and grant root when asked (it's only used to restart the launcher and
