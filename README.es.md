@@ -37,8 +37,7 @@ HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones
     <th>La app</th>
   </tr>
   <tr>
-    <td><img src="docs/media/cc-overview.jpg" width="240" alt="Centro de control"></td>
-    <td><img src="docs/media/cc-toggles.jpg" width="240" alt="Interruptores"></td>
+    <td><img src="docs/media/cc.gif" width="240" alt="Centro de control"></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="App de ajustes de HyperTweak"></a></td>
   </tr>
 </table>
