@@ -97,8 +97,7 @@ final class LauncherSafe {
             p.setProperty("safe_reason", "crash-loop");
             p.setProperty("safe_details", details);
             write(p);
-            Log.e("launcher safe mode activated: " + details,
-                    new IllegalStateException("Repeated launcher process crashes detected"));
+            Log.w("launcher safe mode activated: " + details);
             publish(context, true, "crash-loop", details);
             return false;
         }
@@ -108,20 +107,6 @@ final class LauncherSafe {
                 + "; intentional restarts are excluded");
         publish(context, false, "none", report.count + " crash/ANR exit(s) in the detection window");
         return true;
-    }
-
-    /** Mark a restart initiated by the HyperSpring app before it force-stops the launcher. */
-    static void requestIntentionalRestart(Context context, String source) {
-        if (context == null) return;
-        long now = System.currentTimeMillis();
-        String value = now + "|" + (source == null ? "settings" : source);
-        boolean saved = context.getSharedPreferences("state", Context.MODE_PRIVATE)
-                .edit().putString("launcher_restart_requested", value).commit();
-        if (saved) {
-            Log.i("launcher recovery: marked intentional restart (" + source + ")");
-        } else {
-            Log.w("launcher recovery: could not persist intentional restart marker");
-        }
     }
 
     /** Called from the launcher Application.onCreate path after the recovery decision. */
@@ -152,14 +137,7 @@ final class LauncherSafe {
 
     /** Clear safe mode from the launcher's own process. */
     static synchronized void reset(Context context) {
-        if (file == null && context != null
-                && context.getPackageName().startsWith("com.mi.")) {
-            file = new File(context.getApplicationInfo().dataDir, FILE);
-        }
-        if (file == null) {
-            Log.w("launcher recovery: reset request received outside launcher process");
-            return;
-        }
+        if (file == null) return; // System UI also receives RESET_SAFE; only the launcher owns this file.
 
         Properties p = read();
         p.setProperty("safe", "0");
@@ -332,7 +310,7 @@ final class LauncherSafe {
 
     private static final class CrashReport {
         int count;
-        String summary = "No crash-like exits found";
+        String summary = "";
     }
 
     private LauncherSafe() {
