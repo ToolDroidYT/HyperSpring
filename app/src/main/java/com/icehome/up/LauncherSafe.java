@@ -166,7 +166,8 @@ final class LauncherSafe {
                 if (!"launcher_restart_requested".equals(key)) continue;
 
                 String marker = valueColumn >= 0 ? cursor.getString(valueColumn) : null;
-                String[] parts = marker == null ? new String[0] : marker.split("\\|", 2);
+                if (marker == null || marker.trim().isEmpty() || "0".equals(marker.trim())) continue;
+                String[] parts = marker.split("\\|", 2);
                 long requestedAt = parts.length > 0 ? parse(parts[0]) : 0L;
 
                 // Consume even stale markers so a later unrelated crash is not hidden.
