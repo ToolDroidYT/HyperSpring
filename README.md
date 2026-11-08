@@ -11,6 +11,9 @@
 
 ---
 
+> **A Note on Development:**  
+> This project was initially built using AI to prototype the core concepts quickly. However, I am currently learning Java and **looking forward to** refactoring, maintaining, and coding everything myself as I grow as a developer! Feedback and contributions are more than welcome.
+
 HyperTweak adds two kinds of things to HyperOS:
 - **Launcher and System UI animations** that it doesn't ship with.
 - **A liquid-glass control center** with edge refraction.
