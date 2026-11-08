@@ -75,6 +75,17 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
 
 **The Mods Center mods are not required.** HyperSpring also works with the stock HyperOS launcher and control center. The widget stack and the springy folders hook features of Kashi's launcher, so with the stock launcher those two do nothing.
 
+## Launcher compatibility
+
+HyperSpring supports both Xiaomi launcher package targets through launcher adapters:
+
+- **HyperOS System Launcher:** `com.miui.home` (existing target).
+- **POCO Launcher:** `com.mi.android.globallauncher` (static DEX analysis target: `RELEASE-7.50.06.2597-09231532`, version code `750062597`).
+
+The POCO adapter reuses the shared Xiaomi launcher hooks found in that APK. Kashi-only WidgetStack and folder-resize features are disabled for POCO because their custom classes are absent. Other features remain subject to on-device validation; static DEX symbol checks are not runtime certification.
+
+See [`docs/POCO-PORT.md`](docs/POCO-PORT.md) for the compatibility report and test checklist.
+
 ## Features
 
 ### Launcher (`com.miui.home`)
