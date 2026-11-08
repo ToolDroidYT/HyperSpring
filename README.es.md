@@ -11,7 +11,10 @@
 
 ---
 
-HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones que no trae de serie y un centro de control de cristal líquido con refracción en el borde. No modifica ningún APK: todo se hace con LSPosed y se ajusta desde la app al momento, sin reiniciar.
+> **Nota sobre el desarrollo:**  
+> Este proyecto se diseñó inicialmente con ayuda de IA, pero actualmente estoy aprendiendo Java para reescribir, mantener y programar todo por mí mismo. ¡Cualquier sugerencia o contribución es bienvenida!
+
+HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones que no trae de serie y un centro de control de cristal líquido con refracción en el borde. No modifica ningún APK: todo se hace con LSPosed. Los deslizadores se aplican al momento desde la app; activar o desactivar una función requiere reiniciar el launcher o la interfaz del sistema.
 
 > [!WARNING]
 > **Solo se ha probado en un Redmi 14C con HyperOS 3 (Android 16).** No se asegura que funcione en otros dispositivos. Si algo falla, abre un *issue* con tu móvil, la versión de HyperOS y del launcher, y el registro (**Acerca de → Copiar registro**). Cada función se instala por separado: si una falla, se anota en el registro y las demás siguen funcionando. Si el launcher o la interfaz se cierran varias veces seguidas, HyperTweak se desactiva solo en esa parte (ver [Modo seguro](#modo-seguro)).
@@ -33,11 +36,13 @@ HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones
 
 <table>
   <tr>
-    <th colspan="2">Centro de control de cristal líquido<br><sub>con el iOS Control Center de Mods Center</sub></th>
+    <th>Cortina entre pantallas</th>
+    <th>Centro de control de cristal líquido<br><sub>con el iOS Control Center de Mods Center</sub></th>
     <th>La app</th>
   </tr>
   <tr>
-    <td><img src="docs/media/cc.gif" width="240" alt="Centro de control"></td>
+    <td><a href="docs/media/curtain.mp4"><img src="docs/media/curtain.gif" width="240" alt="Transición de cortina"></a></td>
+    <td><a href="docs/media/cc.mp4"><img src="docs/media/cc.gif" width="240" alt="Centro de control de cristal líquido"></a></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="App de ajustes de HyperTweak"></a></td>
   </tr>
 </table>
@@ -84,72 +89,4 @@ HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones
 - En español o inglés según el idioma del móvil (se puede cambiar en **Acerca de → Idioma**).
 - **Cada ajuste explica para qué sirve:** toca la fila para desplegar la explicación y mantenla pulsada para volver a su valor por defecto.
 - En **Acerca de**, una tarjeta de compatibilidad muestra tu versión de Android y HyperOS, la del launcher y la del centro de control, y si HyperTweak está activo en cada parte.
-- **Registro** del launcher y de la interfaz, para copiarlo al informar de un fallo.
-
-## Instalación
-
-1. Instala el APK de [Releases](../../releases).
-2. En LSPosed, activa **HyperTweak** y marca los ámbitos **Launcher del sistema** e **Interfaz del sistema**.
-3. Reinicia el móvil.
-4. Abre HyperTweak. En **Acerca de → Compatibilidad**, cada parte debería aparecer como **Activo**.
-
-### Si vienes de Ice Home, Telón o KashiPlus
-HyperTweak reúne esos tres módulos en uno.
-- **Ice Home:** HyperTweak se instala encima y conserva sus ajustes, porque usa el mismo paquete (`com.icehome.up`).
-- **Telón y KashiPlus:** desinstálalos y quítalos de LSPosed. Mientras sigan instalados, HyperTweak no carga esa parte para no engancharse dos veces, y la app te avisa.
-- **Ámbitos:** al actualizar, LSPosed **no** marca solo el ámbito nuevo. Revisa que estén los dos.
-
-### Actualizar
-Instala la versión nueva encima y reinicia el launcher y la interfaz desde la pestaña **Inicio**, o reinicia el móvil. Si alguna parte sigue con la versión anterior, la app te avisa.
-
-## Modo seguro
-
-- **Launcher:** si se cierra y vuelve a arrancar 4 veces seguidas en menos de un minuto, HyperTweak deja de cargar sus animaciones ahí. El launcher sigue funcionando con normalidad.
-- **Interfaz del sistema:** si se reinicia varias veces seguidas, se desactivan el telón y el centro de control.
-
-En ambos casos, la app muestra un aviso con el botón **Reactivar**.
-
-Si el móvil no arranca bien, desactiva el módulo en LSPosed. También puedes arrancar en el modo seguro de Magisk o KernelSU.
-
-## Problemas frecuentes
-
-| Problema | Qué hacer |
-|---|---|
-| En **Compatibilidad** sale «No detectado» | Revisa que el módulo y sus dos ámbitos estén activos en LSPosed y reinicia el móvil. |
-| Activo o desactivo una función y no cambia | Las funciones del escritorio y el telón se aplican al reiniciar el launcher o la interfaz: pestaña **Inicio → Reiniciar…**. Concede root a HyperTweak para que el reinicio sea inmediato. |
-| El centro de control no tiene cristal | Reinicia la interfaz desde **Inicio**. Con otros centros de control distintos del de serie y el iOS de Mods Center puede no encontrar las piezas: manda el registro. |
-| Va a tirones | Baja **Resolución** y pon los **Fotogramas por segundo** igual al refresco de tu pantalla. Los dos están en *Escritorio → Abrir y cerrar apps* y en *Sistema → Telón*. |
-| Quiero informar de un fallo | Abre un *issue* y pega el registro: **Acerca de → Copiar registro** (incluye ya tu móvil y versiones). |
-
-## Compilar
-
-- **Con Android SDK:** `./gradlew assembleRelease`.
-- **Sin SDK:** `TOOLS=/ruta bash local-build/build.sh`. Usa JDK 17, `android.jar` de la API 35, jadx (D8), apktool (aapt2) y uber-apk-signer. El APK sale en `local-build/out/HyperTweak.apk`.
-- **Shaders:** antes de compilar se validan los AGSL (`agsl_check.py`, con skia-python). Los de OpenGL se comprueban con Mesa usando los scripts de `local-build/`.
-
-Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.up`.
-
-### Estructura
-- `com.icehome.up`:
-  - Escritorio: genio, recientes, carpetas, pila de widgets.
-  - La app: ajustes, barra de cristal y proveedor de ajustes.
-  - La entrada de LSPosed (`MainHook`).
-- `com.icehome.up.telon`: telón de transiciones y modo seguro de la interfaz.
-- `com.icehome.up.cc`: cristal líquido del centro de control.
-- [`docs/TECHNICAL.md`](docs/TECHNICAL.md): cómo funciona cada animación y qué métodos se enganchan.
-- [`docs/LIQUID_GLASS.md`](docs/LIQUID_GLASS.md): la receta del cristal.
-
-## Próximamente
-
-En camino: rebote elástico global, más estilos de recientes, efectos en el fondo de pantalla, ajustes que se aplican sin reiniciar (libxposed API 102), vista previa dentro de la app, perfiles predefinidos y más. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/olilio3/HyperTweak/issues).
-
-## Créditos
-
-- **Refracción del borde:** la lente de [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) (Apache-2.0, © 2025 Kyant), portada a los sombreadores AGSL del centro de control y de la barra de la app. Desplaza la imagen `circleMap(1 − d/altura) · cantidad` hacia dentro a lo largo del gradiente del rectángulo redondeado, con dispersión cromática de 7 muestras.
-- **Mods de launcher y centro de control** sobre los que se ha probado: Kashi, de Mods Center.
-
-## Licencia
-
-[Apache-2.0](LICENSE). Consulta también [NOTICE](NOTICE).
-
----
+- **Registro** del
