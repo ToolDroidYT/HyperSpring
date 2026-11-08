@@ -49,5 +49,5 @@ sed 's#<manifest #<manifest package="com.icehome.up" #' app/src/main/AndroidMani
 
 # 5) Alinear y firmar (clave de depuración de uber-apk-signer)
 java -jar "$TOOLS/uber-apk-signer.jar" -a "$OUT/apk/unsigned.apk" -o "$OUT/apk/signed" --allowResign >/dev/null
-cp "$OUT"/apk/signed/*.apk "$OUT/HyperTweak.apk"
-echo "OK -> $OUT/HyperTweak.apk"
+cp "$OUT"/apk/signed/*.apk "$OUT/HyperSpring.apk"
+echo "OK -> $OUT/HyperSpring.apk"

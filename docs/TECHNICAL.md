@@ -1,6 +1,6 @@
 # Notas técnicas
 
-Detalles de cómo funciona cada parte, para quien quiera leer o tocar el código. Para instalar y usar HyperTweak, mira el [README](../README.md).
+Detalles de cómo funciona cada parte, para quien quiera leer o tocar el código. Para instalar y usar HyperSpring, mira el [README](../README.md).
 
 ## Escritorio (`com.miui.home`)
 

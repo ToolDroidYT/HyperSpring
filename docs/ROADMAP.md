@@ -1,9 +1,9 @@
-# HyperTweak roadmap
+# HyperSpring roadmap
 
-Ideas planned for upcoming versions. Nothing here is implemented yet, and plans may change. Suggestions are welcome in [Issues](https://github.com/olilio3/HyperTweak/issues).
+Ideas planned for upcoming versions. Nothing here is implemented yet, and plans may change. Suggestions are welcome in [Issues](https://github.com/olilio3/HyperSpring/issues).
 
 ## First step
-- [ ] **Review what HyperCeiler, Kashi's HyperOS Launcher Mod and similar modules already offer**, so HyperTweak doesn't duplicate their features.
+- [ ] **Review what HyperCeiler, Kashi's HyperOS Launcher Mod and similar modules already offer**, so HyperSpring doesn't duplicate their features.
 
 ## Known bugs
 - [ ] **Control center glass stops working after a while.** The liquid glass and shader effects in the control center disappear after some time of use. Still to investigate: does it happen after the screen turns off, after a while in the background, or after opening certain apps? Possible causes: the control center plugin (`miui.systemui.plugin`) being reloaded with a new class loader that the hooks don't reach, or the system discarding the shader to free memory.
@@ -14,8 +14,8 @@ Ideas planned for upcoming versions. Nothing here is implemented yet, and plans 
   - Folders bounce when they open. Today this only works with Kashi's launcher; the goal is to support the stock launcher too.
   - One shared "spring" setting (stiffness and damping) for every effect.
   - *Note:* bringing the bounce to lists in **every** app means hooking the system framework and adding more scopes in LSPosed. It may stay limited to the launcher and System UI.
-- [ ] **More recents styles, off by default**
-  - Community feedback: the card-bending effect also plays inside the recents view itself, which feels odd.
+- [ ] **More recents styles, with an on/off switch**
+  - Community feedback is split: some find the card bending odd, others love it (and it works with button navigation too). It stays, but becomes easy to turn off or swap for another style.
   - Possible styles: fan, 3D stack, and a simple slide (scale and blur).
 - [ ] **Cascade on unlock:** home screen icons ripple in from the center or from where you touched.
 - [ ] **Wallpaper ripple** when tapping an empty area of the home screen.

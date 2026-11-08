@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xposed_description">HyperSpring: efecto genio al abrir y cerrar apps, telón al cambiar de pantalla, recientes que se doblan y carpetas con muelle para el launcher de HyperOS; cristal líquido con refracción en el borde para el centro de control. Probado en un Redmi 14C con HyperOS 3 y los mods de Mods Center (HyperOS Launcher 7.5 e iOS Control Center); también funciona con los de serie.</string>
+</resources>

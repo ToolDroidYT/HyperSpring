@@ -13,5 +13,5 @@ dependencyResolutionManagement {
         maven("https://api.xposed.info/")
     }
 }
-rootProject.name = "HyperTweak"
+rootProject.name = "HyperSpring"
 include(":app")

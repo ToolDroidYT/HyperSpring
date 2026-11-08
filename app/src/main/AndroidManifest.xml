@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <permission
+        android:name="com.icehome.up.permission.CONTROL"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.icehome.up.permission.CONTROL" />
+    <!-- Módulos antiguos (para avisar) y apps que se modifican (para la tarjeta de compatibilidad). -->
+    <queries>
+        <package android:name="com.telon.fx" />
+        <package android:name="com.kashiplus.tweaks" />
+        <package android:name="com.miui.home" />
+        <package android:name="com.android.systemui" />
+        <package android:name="miui.systemui.plugin" />
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <provider
+            android:name="com.icehome.up.PrefsProvider"
+            android:authorities="com.icehome.up.prefs"
+            android:exported="true" />
+
+        <activity
+            android:name="com.icehome.up.SettingsActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="@string/xposed_description" />
+        <meta-data android:name="xposedminversion" android:value="93" />
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
+    </application>
+</manifest>

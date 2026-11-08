@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- **New name: HyperSpring** (formerly HyperTweak). Another HyperOS module already uses that name, so this avoids confusion. The package is still `com.icehome.up`: install over 1.0.0 and your settings are kept.
+- **Fixed:** the APK could not be installed on Android 16 (it targeted SDK 30; now 35).
+
 ## 1.0.0
 
 First public release. It merges three earlier modules into one app: Ice Home, Telón and KashiPlus. The package stays `com.icehome.up`, so it installs over Ice Home and keeps its settings.

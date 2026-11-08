@@ -1,6 +1,6 @@
-# HyperTweak: hoja de ruta
+# HyperSpring: hoja de ruta
 
-Ideas previstas para las próximas versiones. Nada de esto está implementado todavía y los planes pueden cambiar. Las sugerencias son bienvenidas en [Issues](https://github.com/olilio3/HyperTweak/issues).
+Ideas previstas para las próximas versiones. Nada de esto está implementado todavía y los planes pueden cambiar. Las sugerencias son bienvenidas en [Issues](https://github.com/olilio3/HyperSpring/issues).
 
 ## Primer paso
 - [ ] **Revisar qué incluyen ya HyperCeiler, el HyperOS Launcher Mod de Kashi y otros módulos parecidos** para no duplicar funciones.
@@ -14,8 +14,8 @@ Ideas previstas para las próximas versiones. Nada de esto está implementado to
   - Las carpetas rebotan al abrirse. Ojo: ahora solo funciona con el launcher de Kashi y debería funcionar también con el de serie.
   - Un único ajuste de "muelle" (rigidez y amortiguación) compartido por todos los efectos.
   - Ojo: para que el rebote llegue a las listas de *todas* las apps hay que engancharse al framework (`EdgeEffect`) y ampliar los ámbitos en LSPosed. Valorar si se limita al launcher y a la interfaz del sistema.
-- [ ] **Recientes con varios estilos y apagado por defecto**
-  - Comentarios de la comunidad: el doblado de tarjetas se activa dentro de la propia vista de recientes y queda raro.
+- [ ] **Recientes con varios estilos y un interruptor para apagarlo**
+  - Los comentarios están divididos: a algunos el doblado les parece raro y a otros les encanta (y funciona también con navegación por botones). Se queda, pero será fácil apagarlo o cambiarlo por otro estilo.
   - Estilos posibles: abanico, pila 3D y deslizamiento simple (escala y desenfoque).
 - [ ] **Entrada en cascada al desbloquear:** los iconos entran en onda desde el centro o desde el punto tocado.
 - [ ] **Onda en el fondo de pantalla** al tocar una zona vacía del escritorio (shader AGSL).
