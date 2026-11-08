@@ -40,11 +40,13 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
 
 <table>
   <tr>
-    <th colspan="2">Liquid-glass control center<br><sub>with the Mods Center iOS Control Center</sub></th>
+    <th>Curtain between screens</th>
+    <th>Liquid-glass control center<br><sub>with the Mods Center iOS Control Center</sub></th>
     <th>The app</th>
   </tr>
   <tr>
-    <td><img src="docs/media/cc.gif" width="240" alt="Toggles"></td>
+    <td><a href="docs/media/curtain.mp4"><img src="docs/media/curtain.gif" width="240" alt="Curtain transition"></a></td>
+    <td><a href="docs/media/cc.mp4"><img src="docs/media/cc.gif" width="240" alt="Liquid-glass control center"></a></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="HyperTweak settings app"></a></td>
   </tr>
 </table>
