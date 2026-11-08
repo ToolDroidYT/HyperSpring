@@ -44,7 +44,7 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
     <th>The app</th>
   </tr>
   <tr>
-    <td><img src="docs/media/cc.mp4" width="240" alt="Toggles"></td>
+    <td><img src="docs/media/cc.gif" width="240" alt="Toggles"></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="HyperTweak settings app"></a></td>
   </tr>
 </table>
