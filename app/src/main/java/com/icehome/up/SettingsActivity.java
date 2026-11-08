@@ -348,17 +348,21 @@ public class SettingsActivity extends Activity {
         }
 
         if ("1".equals(state("launcher_safe"))) {
-            c.addView(notice(I18n.t("Modo seguro del escritorio: el launcher se cerró varias veces seguidas y HyperSpring "
-                            + "ha dejado de cargar sus animaciones ahí (el launcher funciona normal). Si no fue por ellas, "
-                            + "reactívalas y reinicia el launcher.",
-                    "Launcher safe mode: the launcher crashed several times in a row, so HyperSpring stopped loading its "
-                            + "animations there (the launcher works normally). If they weren't the cause, turn them back on "
-                            + "and restart the launcher."),
-                    I18n.t("Reactivar", "Turn back on"), new View.OnClickListener() {
+            String launcherSafeMessage = I18n.t(
+                    "Modo seguro del escritorio: HyperSpring ha desactivado sus animaciones para proteger POCO Launcher "
+                            + "tras detectar varios cierres por fallo o ANR. El resto del módulo sigue activo.",
+                    "Launcher safe mode: HyperSpring disabled its launcher animations to protect POCO Launcher after "
+                            + "detecting repeated crashes or ANRs. The rest of the module remains active.");
+            String launcherSafeDetails = state("launcher_safe_details");
+            if (launcherSafeDetails != null && !launcherSafeDetails.trim().isEmpty()) {
+                launcherSafeMessage += "\\n\\n" + launcherSafeDetails;
+            }
+            c.addView(notice(launcherSafeMessage,
+                    I18n.t("Reactivar", "Reactivate"), new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
                             send(Remote.RESET_SAFE);
-                            toast(I18n.t("Reactivado: reinicia el launcher", "Turned on: restart the launcher"));
+                            toast(I18n.t("Reactivado: reinicia el launcher", "Reactivated: restart the launcher"));
                         }
                     }));
         }
@@ -1116,6 +1120,14 @@ public class SettingsActivity extends Activity {
     private void restart(final boolean systemUi) {
         final String name = systemUi ? I18n.t("la interfaz del sistema", "System UI") : I18n.t("el launcher", "the launcher");
         toast(I18n.t("Reiniciando ", "Restarting ") + name + "…");
+        if (!systemUi) {
+            String marker = System.currentTimeMillis() + "|settings";
+            boolean saved = getSharedPreferences("state", 0).edit()
+                    .putString("launcher_restart_requested", marker).commit();
+            android.util.Log.i("HyperSpring", saved
+                    ? "Marked POCO/HyperOS launcher restart as intentional"
+                    : "Could not persist intentional launcher restart marker");
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
