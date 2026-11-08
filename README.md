@@ -135,7 +135,7 @@ If a part is still running the previous version, the app tells you.
 
 ## Safe mode
 
-- **Launcher:** if it crashes and restarts 4 times within a minute, HyperSpring stops loading its animations there. The launcher keeps working normally.
+- **Launcher:** HyperSpring checks Android's recorded process-exit reasons. It disables launcher hooks after 3 crash, native-crash, ANR or initialization-failure exits within 2 minutes. Restarts requested from HyperSpring are marked intentional and excluded; ordinary force-stops and system restarts are not treated as crashes. The Home tab shows the reason and recent crash details, and provides a reactivation action.
 - **System UI:** if it restarts several times in a row, the curtain and the control center glass are turned off.
 
 In both cases the app shows a notice with a **Turn back on** button.
