@@ -355,7 +355,7 @@ public class SettingsActivity extends Activity {
                             + "detecting repeated crashes or ANRs. The rest of the module remains active.");
             String launcherSafeDetails = state("launcher_safe_details");
             if (launcherSafeDetails != null && !launcherSafeDetails.trim().isEmpty()) {
-                launcherSafeMessage += "\\n\\n" + launcherSafeDetails;
+                launcherSafeMessage += "\n\n" + launcherSafeDetails;
             }
             c.addView(notice(launcherSafeMessage,
                     I18n.t("Reactivar", "Reactivate"), new View.OnClickListener() {
