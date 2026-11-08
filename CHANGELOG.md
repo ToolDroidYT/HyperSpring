@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3-poco
+
+- POCO Launcher status and logs are now accepted by the settings provider.
+- Launcher recovery uses Android process-exit reasons instead of rapid-start counting.
+- Intentional restarts initiated from HyperSpring are marked and excluded from crash-loop detection.
+- Home displays legacy safe mode and crash-loop diagnostics with a reactivation action.
+
+
 ## 1.0.1
 
 - **New name: HyperSpring** (formerly HyperTweak). Another HyperOS module already uses that name, so this avoids confusion. The package is still `com.icehome.up`: install over 1.0.0 and your settings are kept.
