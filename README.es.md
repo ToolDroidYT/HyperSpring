@@ -11,9 +11,6 @@
 
 ---
 
-> **Nota sobre el desarrollo:**  
-> Este proyecto se diseñó inicialmente con ayuda de IA, pero actualmente estoy aprendiendo Java para reescribir, mantener y programar todo por mí mismo. ¡Cualquier sugerencia o contribución es bienvenida!
-
 HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones que no trae de serie y un centro de control de cristal líquido con refracción en el borde. No modifica ningún APK: todo se hace con LSPosed y se ajusta desde la app al momento, sin reiniciar.
 
 > [!WARNING]
@@ -23,27 +20,30 @@ HyperTweak añade al launcher y a la interfaz del sistema de HyperOS animaciones
 
 <table>
   <tr>
-    <th>Efecto genio</th>
+    <th>Abrir y cerrar apps</th>
     <th>Carpetas y pila de widgets</th>
     <th>Recientes que se doblan</th>
   </tr>
   <tr>
-    <td><a href="docs/media/genie.mp4"><img src="docs/media/genie.gif" width="240" alt="Efecto genio"></a></td>
+    <td><a href="docs/media/app-open-close.mp4"><img src="docs/media/app-open-close.gif" width="240" alt="Abrir y cerrar apps"></a></td>
     <td><a href="docs/media/folders-widgets.mp4"><img src="docs/media/folders-widgets.gif" width="240" alt="Carpetas y pila de widgets"></a></td>
     <td><a href="docs/media/recents.mp4"><img src="docs/media/recents.gif" width="240" alt="Recientes"></a></td>
   </tr>
 </table>
 
-<p align="center"><b>Centro de control de cristal líquido</b> · con el iOS Control Center de Mods Center</p>
-
 <table>
+  <tr>
+    <th colspan="2">Centro de control de cristal líquido<br><sub>con el iOS Control Center de Mods Center</sub></th>
+    <th>La app</th>
+  </tr>
   <tr>
     <td><img src="docs/media/cc-overview.jpg" width="240" alt="Centro de control"></td>
     <td><img src="docs/media/cc-toggles.jpg" width="240" alt="Interruptores"></td>
+    <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="App de ajustes de HyperTweak"></a></td>
   </tr>
 </table>
 
-<sub>Toca un GIF para ver el vídeo con más calidad. Grabado en un Redmi 14C con HyperOS 3.</sub>
+<sub>Toca un GIF o la captura de la app para ver el vídeo completo a hasta 60 fps. Los GIF están recortados y van a menos fotogramas para que pesen poco. Grabado con scrcpy en un Redmi 14C con HyperOS 3.</sub>
 
 ## Requisitos
 

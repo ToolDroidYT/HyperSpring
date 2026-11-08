@@ -11,9 +11,6 @@
 
 ---
 
-> **A Note on Development:**  
-> This project was initially built using AI to prototype the core concepts quickly. However, I am currently learning Java and **looking forward to** refactoring, maintaining, and coding everything myself as I grow as a developer! Feedback and contributions are more than welcome.
-
 HyperTweak adds two kinds of things to HyperOS:
 - **Launcher and System UI animations** that it doesn't ship with.
 - **A liquid-glass control center** with edge refraction.
@@ -30,27 +27,30 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
 
 <table>
   <tr>
-    <th>Genie effect</th>
+    <th>Opening and closing apps</th>
     <th>Folders and widget stack</th>
     <th>Bending recents</th>
   </tr>
   <tr>
-    <td><a href="docs/media/genie.mp4"><img src="docs/media/genie.gif" width="240" alt="Genie effect"></a></td>
+    <td><a href="docs/media/app-open-close.mp4"><img src="docs/media/app-open-close.gif" width="240" alt="Opening and closing apps"></a></td>
     <td><a href="docs/media/folders-widgets.mp4"><img src="docs/media/folders-widgets.gif" width="240" alt="Folders and widget stack"></a></td>
     <td><a href="docs/media/recents.mp4"><img src="docs/media/recents.gif" width="240" alt="Recents"></a></td>
   </tr>
 </table>
 
-<p align="center"><b>Liquid-glass control center</b> · with the Mods Center iOS Control Center</p>
-
 <table>
+  <tr>
+    <th colspan="2">Liquid-glass control center<br><sub>with the Mods Center iOS Control Center</sub></th>
+    <th>The app</th>
+  </tr>
   <tr>
     <td><img src="docs/media/cc-overview.jpg" width="240" alt="Control center"></td>
     <td><img src="docs/media/cc-toggles.jpg" width="240" alt="Toggles"></td>
+    <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="HyperTweak settings app"></a></td>
   </tr>
 </table>
 
-<sub>Tap a GIF to watch the higher-quality video. Recorded on a Redmi 14C with HyperOS 3.</sub>
+<sub>Tap a GIF or the app screenshot to watch the full video at up to 60 fps. The GIFs are shortened and run at a lower frame rate to keep them light. Recorded with scrcpy on a Redmi 14C with HyperOS 3.</sub>
 
 ## Requirements
 
