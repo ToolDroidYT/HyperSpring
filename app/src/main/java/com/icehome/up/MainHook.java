@@ -47,14 +47,15 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             XposedBridge.log(t);
         }
-        // Modo seguro: si el launcher se está cayendo una y otra vez, arranca sin animaciones.
-        if (!LauncherSafe.checkAtLoad(lpparam.appInfo != null ? lpparam.appInfo.dataDir : null)) return;
-        // Los interruptores se leen cuando el launcher ya tiene su contexto: antes, con el del
-        // sistema, el proveedor de ajustes rechaza la consulta y todo salía activado.
+        // Espera a Application.attach: el recovery check necesita consultar el historial de
+        // salidas de Android y consumir el marcador de reinicio intencional de la app.
         final ClassLoader fcl = cl;
+        final String dataDir = lpparam.appInfo != null ? lpparam.appInfo.dataDir : null;
         onAttach(new WithContext() {
             @Override
             public void run(android.content.Context c) {
+                if (!LauncherSafe.checkAtLoad(c, dataDir)) return;
+                // Los interruptores se leen con el contexto propio del launcher.
                 adapter.install(c, fcl);
             }
         });
