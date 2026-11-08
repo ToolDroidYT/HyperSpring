@@ -348,11 +348,21 @@ public class SettingsActivity extends Activity {
         }
 
         if ("1".equals(state("launcher_safe"))) {
-            String launcherSafeMessage = I18n.t(
-                    "Modo seguro del escritorio: HyperSpring ha desactivado sus animaciones para proteger POCO Launcher "
-                            + "tras detectar varios cierres por fallo o ANR. El resto del módulo sigue activo.",
-                    "Launcher safe mode: HyperSpring disabled its launcher animations to protect POCO Launcher after "
-                            + "detecting repeated crashes or ANRs. The rest of the module remains active.");
+            String launcherSafeReason = state("launcher_safe_reason");
+            String launcherSafeMessage;
+            if ("legacy-safe-mode".equals(launcherSafeReason)) {
+                launcherSafeMessage = I18n.t(
+                        "Modo seguro heredado: una versión anterior de HyperSpring desactivó las animaciones tras varios "
+                                + "reinicios rápidos del launcher. Eso no confirma que fueran cierres por fallo.",
+                        "Legacy safe mode: an earlier HyperSpring version disabled launcher animations after several "
+                                + "rapid process starts. That does not confirm those starts were crashes.");
+            } else {
+                launcherSafeMessage = I18n.t(
+                        "Modo seguro del escritorio: HyperSpring ha desactivado sus animaciones para proteger POCO Launcher "
+                                + "tras detectar varios cierres por fallo o ANR. El resto del módulo sigue activo.",
+                        "Launcher safe mode: HyperSpring disabled its launcher animations to protect POCO Launcher after "
+                                + "detecting repeated crashes or ANRs. The rest of the module remains active.");
+            }
             String launcherSafeDetails = state("launcher_safe_details");
             if (launcherSafeDetails != null && !launcherSafeDetails.trim().isEmpty()) {
                 launcherSafeMessage += "\n\n" + launcherSafeDetails;
