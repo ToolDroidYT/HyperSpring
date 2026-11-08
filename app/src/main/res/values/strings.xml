@@ -4,6 +4,7 @@
     <string name="xposed_description">HyperSpring: genie open/close animation, curtain transitions, bending recents and springy folders for the HyperOS launcher; liquid glass with edge refraction for the control center. Tested on a Redmi 14C with HyperOS 3 and the Mods Center mods (HyperOS Launcher 7.5 and iOS Control Center); also works with the stock ones.</string>
     <string-array name="xposed_scope">
         <item>com.miui.home</item>
+        <item>com.mi.android.globallauncher</item>
         <item>com.android.systemui</item>
         <item>miui.systemui.plugin</item>
     </string-array>
