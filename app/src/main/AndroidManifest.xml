@@ -10,6 +10,7 @@
         <package android:name="com.telon.fx" />
         <package android:name="com.kashiplus.tweaks" />
         <package android:name="com.miui.home" />
+        <package android:name="com.mi.android.globallauncher" />
         <package android:name="com.android.systemui" />
         <package android:name="miui.systemui.plugin" />
     </queries>
