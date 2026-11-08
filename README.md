@@ -26,6 +26,32 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
 > - **If a part fails on your device:** each feature is installed separately, so the error is written to the log and the rest keeps working.
 > - **If the launcher or System UI crashes repeatedly:** HyperTweak turns itself off in that part (see [Safe mode](#safe-mode)).
 
+## Preview
+
+<table>
+  <tr>
+    <th>Genie effect</th>
+    <th>Folders and widget stack</th>
+    <th>Bending recents</th>
+  </tr>
+  <tr>
+    <td><a href="docs/media/genie.mp4"><img src="docs/media/genie.gif" width="240" alt="Genie effect"></a></td>
+    <td><a href="docs/media/folders-widgets.mp4"><img src="docs/media/folders-widgets.gif" width="240" alt="Folders and widget stack"></a></td>
+    <td><a href="docs/media/recents.mp4"><img src="docs/media/recents.gif" width="240" alt="Bending recents"></a></td>
+  </tr>
+</table>
+
+<p align="center"><b>Liquid-glass control center</b> · with the Mods Center iOS Control Center</p>
+
+<table>
+  <tr>
+    <td><img src="docs/media/cc-overview.jpg" width="240" alt="Control center"></td>
+    <td><img src="docs/media/cc-toggles.jpg" width="240" alt="Toggles"></td>
+  </tr>
+</table>
+
+<sub>Tap a GIF to watch the higher-quality video. Recorded on a Redmi 14C with HyperOS 3.</sub>
+
 ## Requirements
 
 | | |
