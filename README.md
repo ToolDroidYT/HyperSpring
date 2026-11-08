@@ -11,9 +11,6 @@
 
 ---
 
-> **A Note on Development:**  
-> This project was initially built using AI to prototype the core concepts quickly. However, I am currently learning Java and **looking forward to** refactoring, maintaining, and coding everything myself as I grow as a developer! Feedback and contributions are more than welcome.
-
 HyperTweak adds two kinds of things to HyperOS:
 - **Launcher and System UI animations** that it doesn't ship with.
 - **A liquid-glass control center** with edge refraction.
@@ -37,7 +34,7 @@ It doesn't modify any APK: everything runs through LSPosed and most settings app
   <tr>
     <td><a href="docs/media/genie.mp4"><img src="docs/media/genie.gif" width="240" alt="Genie effect"></a></td>
     <td><a href="docs/media/folders-widgets.mp4"><img src="docs/media/folders-widgets.gif" width="240" alt="Folders and widget stack"></a></td>
-    <td><a href="docs/media/recents.mp4"><img src="docs/media/recents.gif" width="240" alt="Bending recents"></a></td>
+    <td><a href="docs/media/recents.mp4"><img src="docs/media/recents.gif" width="240" alt="Recents"></a></td>
   </tr>
 </table>
 
@@ -141,7 +138,7 @@ If the phone doesn't boot properly, disable the module in LSPosed, or boot into 
   - Uses JDK 17, the API 35 `android.jar`, jadx (D8), apktool (aapt2) and uber-apk-signer.
   - The version comes from `Version.java`.
   - The APK ends up in `local-build/out/HyperTweak.apk`.
-- **Shader checks:** the AGSL shaders are validated with skia-python before building, and the OpenGL ones with Mesa (scripts in `local-build/`[cite: 2]).
+- **Shader checks:** the AGSL shaders are validated with skia-python before building, and the OpenGL ones with Mesa (scripts in `local-build/`).
 
 ### Layout
 - `com.icehome.up`:
@@ -152,10 +149,14 @@ If the phone doesn't boot properly, disable the module in LSPosed, or boot into 
 - `com.icehome.up.cc`: control center liquid glass.
 - [`docs/TECHNICAL.md`](docs/TECHNICAL.md): how each animation works and which methods are hooked (in Spanish).
 
+## Roadmap
+
+Coming next: global elastic bounce, more recents styles, wallpaper effects, settings that apply without restarting (libxposed API 102), an in-app preview, presets and more. See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/olilio3/HyperTweak/issues).
+
 ## Credits
 
-- **Edge refraction:** the [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) lens (Apache-2.0, © 2025 Kyant), ported to the AGSL shaders of the control center and the app's bar[cite: 2].
-- **Launcher and control center mods it was tested with:** Kashi, from Mods Center[cite: 2].
+- **Edge refraction:** the [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) lens (Apache-2.0, © 2025 Kyant), ported to the AGSL shaders of the control center and the app's bar.
+- **Launcher and control center mods it was tested with:** Kashi, from Mods Center.
 
 ## License
 
