@@ -64,7 +64,7 @@ public class PrefsProvider extends ContentProvider {
     public Uri insert(Uri uri, ContentValues v) {
         // Solo el launcher y la interfaz del sistema escriben en el registro.
         String from = getCallingPackage();
-        boolean launcher = "com.miui.home".equals(from), sysui = "com.android.systemui".equals(from);
+        boolean launcher = "com.miui.home".equals(from) || "com.mi.android.globallauncher".equals(from), sysui = "com.android.systemui".equals(from);
         if (v == null || !(launcher || sysui)) return null;
         if ("state".equals(uri.getLastPathSegment())) {
             String k = v.getAsString("key"), val = v.getAsString("value");
