@@ -382,8 +382,13 @@ public class SettingsActivity extends Activity {
         LinearLayout f = card();
         f.addView(toggleRow(Icons.SPARKLE, item(Tune.ITEMS, "icehome_genie_on"), I18n.t("Abrir y cerrar apps", "Opening and closing apps")));
         f.addView(toggleRow(Icons.LAYERS, item(Tune.ITEMS, "icehome_curtain_on"), I18n.t("Recientes que se doblan al deslizarlas", "Recents that bend as you swipe")));
-        f.addView(toggleRow(Icons.WIDGETS, item(Tune.ITEMS, "icehome_stack_on"), I18n.t("Pila de widgets con baraja", "Shuffling widget stack")));
-        f.addView(toggleRow(Icons.FOLDER, item(Tune.ITEMS, "icehome_folder_morph_on"), I18n.t("Carpetas con muelle", "Springy folders")));
+        LauncherAdapter activeAdapter = LauncherAdapters.resolve(this);
+        if (activeAdapter.supportsWidgetStack()) {
+            f.addView(toggleRow(Icons.WIDGETS, item(Tune.ITEMS, "icehome_stack_on"), I18n.t("Pila de widgets con baraja", "Shuffling widget stack")));
+        }
+        if (activeAdapter.supportsFolderMorph()) {
+            f.addView(toggleRow(Icons.FOLDER, item(Tune.ITEMS, "icehome_folder_morph_on"), I18n.t("Carpetas con muelle", "Springy folders")));
+        }
         f.addView(toggleRow(Icons.DROP, item(Tune.ITEMS, "icehome_folder_glass_on"), I18n.t("Cristal en las carpetas", "Glass folders")));
         f.addView(toggleRow(Icons.CURTAIN, item(com.icehome.up.telon.Tune.ITEMS, "telon_on"), I18n.t("Telón al cambiar de pantalla", "Curtain when switching screens")));
         f.addView(toggleRow(Icons.SLIDERS, item(com.icehome.up.cc.Tune.ITEMS, "kashiplus_cc_on"), I18n.t("Cristal en el centro de control", "Glass control center")));
@@ -481,7 +486,7 @@ public class SettingsActivity extends Activity {
         c.addView(label(I18n.t("Compatibilidad", "Compatibility")));
         LinearLayout k = glassCard();
         k.addView(infoRow(Icons.PHONE, I18n.t("Este móvil", "This phone"), Build.MANUFACTURER + " " + Build.MODEL + " · " + systemVersion()));
-        k.addView(statusRow(Icons.HOME, I18n.t("Escritorio", "Launcher"), appVersion("com.miui.home"), "launcher_seen"));
+        k.addView(statusRow(Icons.HOME, I18n.t("Escritorio", "Launcher"), appVersion(LauncherAdapters.resolvePackage(this)), "launcher_seen"));
         k.addView(statusRow(Icons.CURTAIN, I18n.t("Interfaz del sistema", "System UI"), appVersion("com.android.systemui"), "systemui_seen"));
         String cc = state("cc_seen");
         String ccKind = cc == null ? null : cc.endsWith("|ios") ? I18n.t("mod iOS Control Center", "iOS Control Center mod")
@@ -700,7 +705,7 @@ public class SettingsActivity extends Activity {
     /** Copia el registro con los datos del móvil delante (lo que hace falta en un issue). */
     private void copyLog() {
         String head = "HyperSpring " + version() + " · " + Build.MANUFACTURER + " " + Build.MODEL + " · " + systemVersion()
-                + " · launcher " + appVersion("com.miui.home") + "\n";
+                + " · launcher " + appVersion(LauncherAdapters.resolvePackage(this)) + "\n";
         android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         cm.setPrimaryClip(android.content.ClipData.newPlainText("HyperSpring", head + readLog()));
         toast(I18n.t("Registro copiado", "Log copied"));
@@ -1115,7 +1120,7 @@ public class SettingsActivity extends Activity {
             @Override
             public void run() {
                 // Se cierra el proceso viejo (por su pid) y el sistema lo vuelve a abrir solo.
-                String pkg = systemUi ? "com.android.systemui" : "com.miui.home";
+                String pkg = systemUi ? "com.android.systemui" : LauncherAdapters.resolvePackage(SettingsActivity.this);
                 String cmd = "p=$(pidof " + pkg + "); "
                         + (systemUi ? "" : "am force-stop " + pkg + " >/dev/null 2>&1; sleep 0.3; ")
                         + "[ -n \"$p\" ] && kill -9 $p 2>/dev/null; echo hecho";

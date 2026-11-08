@@ -37,9 +37,10 @@ public class MainHook implements IXposedHookLoadPackage {
             }
             return;
         }
-        if (!"com.miui.home".equals(lpparam.packageName)) return;
-        if (lpparam.processName != null && !lpparam.processName.equals("com.miui.home")) return;
-        XposedBridge.log("IceHome: launcher enganchado");
+        final LauncherAdapter adapter = LauncherAdapters.forPackage(lpparam.packageName);
+        if (adapter == null) return;
+        if (lpparam.processName != null && !lpparam.processName.equals(adapter.packageName())) return;
+        XposedBridge.log("IceHome: " + adapter.displayName() + " enganchado");
         ClassLoader cl = lpparam.classLoader;
         try {
             Remote.install(false);
@@ -54,13 +55,13 @@ public class MainHook implements IXposedHookLoadPackage {
         onAttach(new WithContext() {
             @Override
             public void run(android.content.Context c) {
-                installLauncher(c, fcl);
+                adapter.install(c, fcl);
             }
         });
     }
 
-    private static void installLauncher(android.content.Context c, ClassLoader cl) {
-        Log.i("funciones: genio " + onOff(Tune.on(c, "icehome_genie_on"))
+    static void installLauncherFeatures(android.content.Context c, ClassLoader cl, LauncherAdapter adapter) {
+        Log.i(adapter.displayName() + " funciones: genio " + onOff(Tune.on(c, "icehome_genie_on"))
                 + ", recientes " + onOff(Tune.on(c, "icehome_curtain_on"))
                 + ", pila " + onOff(Tune.on(c, "icehome_stack_on"))
                 + ", carpetas " + onOff(Tune.on(c, "icehome_folder_morph_on"))
@@ -90,7 +91,7 @@ public class MainHook implements IXposedHookLoadPackage {
                 Log.e("no se pudo instalar la cortina de recientes", t);
             }
         }
-        if (Tune.on(c, "icehome_stack_on")) {
+        if (adapter.supportsWidgetStack() && Tune.on(c, "icehome_stack_on")) {
             try {
                 StackSwipe.install(cl);
             } catch (Throwable t) {
@@ -106,7 +107,7 @@ public class MainHook implements IXposedHookLoadPackage {
                 XposedBridge.log(t);
             }
         }
-        if (Tune.on(c, "icehome_folder_morph_on")) {
+        if (adapter.supportsFolderMorph() && Tune.on(c, "icehome_folder_morph_on")) {
             try {
                 FolderMorph.install(cl);
             } catch (Throwable t) {

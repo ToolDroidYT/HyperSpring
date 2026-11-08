@@ -98,7 +98,7 @@ final class Remote {
     private static void stopLauncher(Context c) {
         try {
             Object am = c.getSystemService(Context.ACTIVITY_SERVICE);
-            am.getClass().getMethod("forceStopPackage", String.class).invoke(am, "com.miui.home");
+            am.getClass().getMethod("forceStopPackage", String.class).invoke(am, LauncherAdapters.resolvePackage(c));
             com.icehome.up.telon.Log.i("launcher reiniciado desde la interfaz del sistema");
         } catch (Throwable t) {
             com.icehome.up.telon.Log.e("no se pudo reiniciar el launcher desde la interfaz", t);
