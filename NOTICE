@@ -1,0 +1,8 @@
+HyperTweak
+Copyright 2026 HyperTweak contributors
+
+This product includes code ported from AndroidLiquidGlass
+(https://github.com/Kyant0/AndroidLiquidGlass), Copyright 2025 Kyant,
+licensed under the Apache License, Version 2.0: the rounded-rectangle
+refraction lens (circleMap displacement along the SDF gradient) and its
+7-tap chromatic dispersion, used in cc/GlassShader.java and GlassBar.java.
