@@ -80,7 +80,19 @@ final class Remote {
                     com.icehome.up.telon.Tune.reload(c);
                     if (MainHook.ccInstalled) CcGlass.retune(c);
                 } else if (RESET_SAFE.equals(i.getAction())) {
+                    // Reset SystemUI's own guard, then persist a one-shot command for POCO
+                    // Launcher. HyperOS can freeze the launcher receiver while it is hidden.
                     SafeMode.reset(c);
+                    try {
+                        android.content.ContentValues reset = new android.content.ContentValues();
+                        reset.put("key", "launcher_safe_reset_requested");
+                        reset.put("value", String.valueOf(System.currentTimeMillis()));
+                        c.getContentResolver().insert(PrefsProvider.STATE, reset);
+                        com.icehome.up.telon.Log.i("launcher safe-mode reset queued for next launcher process start");
+                        stopLauncher(c);
+                    } catch (Throwable t) {
+                        com.icehome.up.telon.Log.e("could not queue launcher safe-mode reset", t);
+                    }
                 } else if (RESTART_LAUNCHER.equals(i.getAction())) {
                     stopLauncher(c);
                 } else {
