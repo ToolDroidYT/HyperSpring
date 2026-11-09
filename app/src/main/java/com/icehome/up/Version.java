@@ -6,8 +6,8 @@ package com.icehome.up;
  * toma de aquí el versionName.
  */
 public final class Version {
-    public static final String NAME = "1.0.6-poco";
-    public static final int CODE = 50;
+    public static final String NAME = "1.0.7-poco";
+    public static final int CODE = 51;
 
     private Version() {
     }
