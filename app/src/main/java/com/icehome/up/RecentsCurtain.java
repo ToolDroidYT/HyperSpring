@@ -204,6 +204,7 @@ final class RecentsCurtain {
         return active || Math.abs(c.v) > 20f;
     }
 
+    /** Remove our effect from a recycled or hidden task thumbnail immediately. */
     private static void clearCard(View view) {
         Card card = cards.remove(view);
         if (card == null) return;
@@ -253,27 +254,6 @@ final class RecentsCurtain {
         lastFrameNs = 0;
         lastKickNs = 0;
     }
-
-    /** Remove our effect from a recycled or hidden task thumbnail immediately. */
-    private static void clearCard(View view) {
-        Card card = cards.remove(view);
-        if (card != null && card.effect) {
-            try {
-                view.setRenderEffect(null);
-            } catch (Throwable t) {
-                Log.e("cortina de recientes: limpiar tarjeta", t);
-            }
-        }
-    }
-
-    /** Stop callbacks and restore every card when the recents container leaves the screen. */
-    private static void stopTracking() {
-        clearAll();
-        running = false;
-        lastFrameNs = 0;
-        lastKickNs = 0;
-    }
-
 
     private RecentsCurtain() {
     }
