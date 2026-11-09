@@ -59,6 +59,27 @@ final class LauncherSafe {
         Properties p = read();
         long now = System.currentTimeMillis();
 
+        // RESET_SAFE is broadcast to SystemUI and Launcher. HyperOS may not deliver the
+        // launcher receiver while its process is frozen, so SystemUI also publishes a
+        // one-shot reset command. Consume it here, inside the launcher process that owns FILE.
+        if (consumeSafeResetRequest(context)) {
+            p.setProperty("safe", "0");
+            p.setProperty("stable_at", String.valueOf(now));
+            p.setProperty("last_crash_count", "0");
+            p.setProperty("last_crash_summary", "Manually reactivated from Settings");
+            p.remove("safe_reason");
+            p.remove("safe_details");
+            p.remove("safe_at");
+            if (write(p)) {
+                Log.i("launcher recovery: consumed remote reactivation request; legacy safe mode cleared");
+                publish(context, false, "manually-reset", "Safe mode cleared by Settings; launcher hooks will load");
+            } else {
+                Log.e("launcher recovery: reset request received but launcher state could not be written",
+                        new IllegalStateException("Could not persist launcher safe-mode reset"));
+                publish(context, true, "reset-failed", "Could not write launcher recovery state");
+            }
+        }
+
         long intentionalAt = consumeIntentionalRestart(context, now);
         if (intentionalAt > 0L) {
             p.setProperty("intentional_at", String.valueOf(intentionalAt));
@@ -180,6 +201,41 @@ final class LauncherSafe {
         }
         Log.i("launcher safe mode manually cleared; restart POCO Launcher to reload its features");
         publish(context, false, "manually-reset", "Safe mode was manually cleared");
+    }
+
+    private static boolean consumeSafeResetRequest(Context context) {
+        Cursor cursor = null;
+        try {
+            cursor = context.getContentResolver().query(
+                    PrefsProvider.STATE, new String[]{"key", "value"}, null, null, null);
+            if (cursor == null) return false;
+            int keyColumn = cursor.getColumnIndex("key");
+            int valueColumn = cursor.getColumnIndex("value");
+            while (cursor.moveToNext()) {
+                String key = keyColumn >= 0 ? cursor.getString(keyColumn) : null;
+                if (!"launcher_safe_reset_requested".equals(key)) continue;
+                String marker = valueColumn >= 0 ? cursor.getString(valueColumn) : null;
+                long requestedAt = parse(marker);
+                ContentValues clear = new ContentValues();
+                clear.put("key", "launcher_safe_reset_requested");
+                clear.put("value", "0");
+                context.getContentResolver().insert(PrefsProvider.STATE, clear);
+                long now = System.currentTimeMillis();
+                if (requestedAt > 0L && now >= requestedAt - 5_000L
+                        && now - requestedAt <= INTENTIONAL_TTL_MS) {
+                    Log.i("launcher recovery: accepted cross-process safe-mode reset request from "
+                            + time(requestedAt));
+                    return true;
+                }
+                Log.w("launcher recovery: discarded expired safe-mode reset request");
+                return false;
+            }
+        } catch (Throwable t) {
+            Log.w("launcher recovery: could not consume safe-mode reset request: " + t);
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+        return false;
     }
 
     private static long consumeIntentionalRestart(Context context, long now) {
