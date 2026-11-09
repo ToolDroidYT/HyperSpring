@@ -62,6 +62,7 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     static void installLauncherFeatures(android.content.Context c, ClassLoader cl, LauncherAdapter adapter) {
+        Hidden.setCaptureChildrenOnly(adapter.captureChildrenOnly());
         Log.i(adapter.displayName() + " funciones: genio " + onOff(Tune.on(c, "icehome_genie_on"))
                 + ", recientes " + onOff(Tune.on(c, "icehome_curtain_on"))
                 + ", pila " + onOff(Tune.on(c, "icehome_stack_on"))
