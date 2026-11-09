@@ -70,14 +70,24 @@ final class RecentsCurtain {
     private static Class<?> taskViewClass;
     private static final WeakHashMap<View, Card> cards = new WeakHashMap<>();
     private static ViewGroup stack;
+    private static ViewGroup observedStack;
     private static boolean running;
     private static long lastKickNs, lastFrameNs;
+
+    private static final View.OnAttachStateChangeListener STACK_ATTACH = new View.OnAttachStateChangeListener() {
+        @Override public void onViewAttachedToWindow(View v) {}
+
+        @Override public void onViewDetachedFromWindow(View v) {
+            if (v == observedStack) stopTracking();
+        }
+    };
 
     /** Estado de una tarjeta (solo hilo principal). */
     private static final class Card {
         float x, v, b, bv;
         boolean init, effect;
         RuntimeShader shader;
+        View.OnAttachStateChangeListener attachListener;
     }
 
     static void install(ClassLoader cl) {
@@ -94,43 +104,6 @@ final class RecentsCurtain {
             }
         });
 
-        // TaskViews are recycled by the launcher. Never leave our RenderEffect on a detached
-        // card, or it can reappear as a stale/ghost preview when that view is reused.
-        XposedBridge.hookAllMethods(View.class, "onDetachedFromWindow", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam p) {
-                View v = (View) p.thisObject;
-                if (taskViewClass.isInstance(v)) clearCard(v);
-                if (v == stack) stopTracking();
-            }
-        });
-
-        // The recents container can remain attached while the launcher animates it off-screen.
-        // Clear effects as soon as it becomes hidden or transparent.
-        XposedBridge.hookAllMethods(View.class, "setVisibility", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam p) {
-                View v = (View) p.thisObject;
-                int visibility = (Integer) p.args[0];
-                if (taskViewClass.isInstance(v) && visibility != View.VISIBLE) clearCard(v);
-                if (v == stack && visibility != View.VISIBLE) stopTracking();
-            }
-        });
-        XposedBridge.hookAllMethods(View.class, "setAlpha", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam p) {
-                View v = (View) p.thisObject;
-                float alpha = (Float) p.args[0];
-                if (taskViewClass.isInstance(v) && alpha <= 0.01f) clearCard(v);
-                if (v == stack && alpha <= 0.01f) stopTracking();
-            }
-        });
-        XposedBridge.hookAllMethods(View.class, "onWindowVisibilityChanged", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam p) {
-                if (p.thisObject == stack && (Integer) p.args[0] != View.VISIBLE) stopTracking();
-            }
-        });
         Log.i("cortina de recientes activa (limpieza al ocultar, reciclar o separar tarjetas)");
     }
 
@@ -138,8 +111,10 @@ final class RecentsCurtain {
     private static void kick(ViewGroup s) {
         if (strength <= 0f) return;
         if (stack != s) {
-            clearAll();
+            stopTracking();
             stack = s;
+            observedStack = s;
+            s.addOnAttachStateChangeListener(STACK_ATTACH);
         }
         lastKickNs = System.nanoTime();
         if (!running) {
@@ -185,7 +160,16 @@ final class RecentsCurtain {
         Card c = cards.get(view);
         if (c == null) {
             c = new Card();
+            final View cardView = view;
+            c.attachListener = new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View v) {}
+
+                @Override public void onViewDetachedFromWindow(View v) {
+                    clearCard(cardView);
+                }
+            };
             cards.put(view, c);
+            view.addOnAttachStateChangeListener(c.attachListener);
         }
         float x = view.getX() + view.getWidth() * 0.5f;
         if (!c.init || dt <= 0f) {
@@ -220,12 +204,54 @@ final class RecentsCurtain {
         return active || Math.abs(c.v) > 20f;
     }
 
+    private static void clearCard(View view) {
+        Card card = cards.remove(view);
+        if (card == null) return;
+        if (card.attachListener != null) {
+            view.removeOnAttachStateChangeListener(card.attachListener);
+            card.attachListener = null;
+        }
+        if (card.effect) {
+            try {
+                view.setRenderEffect(null);
+            } catch (Throwable t) {
+                Log.e("cortina de recientes: limpiar tarjeta", t);
+            }
+            card.effect = false;
+        }
+    }
+
     private static void clearAll() {
-        for (java.util.Map.Entry<View, Card> e : cards.entrySet()) {
-            if (e.getValue().effect && e.getKey() != null) e.getKey().setRenderEffect(null);
+        for (java.util.Map.Entry<View, Card> e : new java.util.ArrayList<>(cards.entrySet())) {
+            View view = e.getKey();
+            Card card = e.getValue();
+            if (view == null || card == null) continue;
+            if (card.attachListener != null) {
+                view.removeOnAttachStateChangeListener(card.attachListener);
+                card.attachListener = null;
+            }
+            if (card.effect) {
+                try {
+                    view.setRenderEffect(null);
+                } catch (Throwable t) {
+                    Log.e("cortina de recientes: limpiar tarjeta", t);
+                }
+                card.effect = false;
+            }
         }
         cards.clear();
         stack = null;
+    }
+
+    /** Stop callbacks and restore cards when recents is detached or no longer visible. */
+    private static void stopTracking() {
+        ViewGroup old = observedStack;
+        observedStack = null;
+        if (old != null) old.removeOnAttachStateChangeListener(STACK_ATTACH);
+        clearAll();
+        running = false;
+        lastFrameNs = 0;
+        lastKickNs = 0;
     }
 
     /** Remove our effect from a recycled or hidden task thumbnail immediately. */
