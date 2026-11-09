@@ -55,11 +55,11 @@ final class RecentsCurtain {
             + "}\n";
 
     /** Doblez por velocidad (px de doblez por px/s) y máximo (fracción del ancho de la tarjeta). */
-    private static final float GAIN = 0.02f, MAX = 0.13f;
+    private static final float GAIN = 0.014f, MAX = 0.10f;
     /** Muelle del doblez: duro y con un poco de balanceo, como una cortina rígida. */
-    private static final float K = 380f, ZETA = 0.55f;
+    private static final float K = 150f, ZETA = 0.88f;
     /** Por debajo de esto (px) la tarjeta va sin efecto. */
-    private static final float EPS = 0.3f;
+    private static final float EPS = 0.04f;
     /** Tras el último desplazamiento, se sigue midiendo este tiempo (inercia, muelle). */
     private static final long LINGER_NS = 250_000_000L;
 
@@ -187,7 +187,7 @@ final class RecentsCurtain {
             c.bv += (K * (target - c.b) - damp * c.bv) * h;
             c.b += c.bv * h;
         }
-        boolean active = Math.abs(c.b) > EPS || Math.abs(c.bv) > 5f;
+        boolean active = Math.abs(c.b) > EPS || Math.abs(c.bv) > 1.5f;
         if (active) {
             if (c.shader == null) c.shader = new RuntimeShader(AGSL);
             c.shader.setFloatUniform("size", view.getWidth(), view.getHeight());
@@ -200,7 +200,7 @@ final class RecentsCurtain {
             c.effect = false;
             c.b = c.bv = 0f;
         }
-        return active || Math.abs(c.v) > 20f;
+        return active || Math.abs(c.v) > 8f;
     }
 
     /** Remove our effect from a recycled or hidden task thumbnail immediately. */
