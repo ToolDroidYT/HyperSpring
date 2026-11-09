@@ -389,7 +389,7 @@ public class SettingsActivity extends Activity {
                                                 "Reactivation could not be confirmed. Copy the log and check LSPosed."));
                                     }
                                 }
-                            }, 800);
+                            }, 2500);
                         }
                     }));
         }
