@@ -111,11 +111,18 @@ final class LauncherSafe {
 
     /** Called from the launcher Application.onCreate path after the recovery decision. */
     static void started(final Context context) {
-        publish(context, "1".equals(read().getProperty("safe")),
-                value(read(), "safe_reason", "none"),
-                value(read(), "safe_details", "No active safe-mode diagnosis"));
+        final Properties initial = read();
+        final boolean safe = "1".equals(initial.getProperty("safe"));
+        final String reason = safe
+                ? value(initial, "safe_reason", "legacy-safe-mode")
+                : value(initial, "safe_reason", "none");
+        final String details = safe
+                ? value(initial, "safe_details",
+                        "Safe mode was enabled by an earlier version; its rapid-start counter did not confirm crashes")
+                : value(initial, "safe_details", "No active safe mode");
+        publish(context, safe, reason, details);
 
-        if ("1".equals(read().getProperty("safe"))) return;
+        if (safe) return;
 
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
