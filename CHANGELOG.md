@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4-poco
+
+- Fixes launcher reactivation when the recovery-state file was not initialized in memory.
+- Preserves and displays the legacy safe-mode diagnosis instead of overwriting it with a generic status.
+- Verifies the safe-mode reset from the Home screen before reporting success.
+
+
 ## 1.0.3-poco
 
 - POCO Launcher status and logs are now accepted by the settings provider.
