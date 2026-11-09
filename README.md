@@ -6,7 +6,7 @@
 
 <p align="center">
   Animations and liquid glass for HyperOS · LSPosed module<br>
-  <b>v1.0.7-poco</b> · <a href="README.es.md">Español</a>
+  <b>v1.0.8-poco</b> · <a href="README.es.md">Español</a>
 </p>
 
 ---
@@ -120,7 +120,7 @@ See [`docs/POCO-PORT.md`](docs/POCO-PORT.md) for the detailed compatibility repo
   - Three styles: classic genie, Samsung-like cup and "Ice" (softer, with a bounce).
   - Drawn with OpenGL on its own thread so it stays smooth on mid-range phones.
 - **Drag to close like a lamp:** the window hangs from your finger and swings.
-- **Bending recents:** cards bend depending on how hard you swipe.
+- **Bending recents:** cards bend with swipe velocity, stay bent while a pressed card is held still, then blend smoothly back as the card settles.
 - **Sinking icons** when pressed, and **wallpaper zoom** when opening apps.
 - **Folders** with blurred glass and a springy resize.
 - **Widget stack** you can shuffle and drag freely.

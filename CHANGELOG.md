@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.8-poco
+
+- Recents cards now keep their last bend while a pressed card is held still.
+- Added a bidirectional shader blend so the gooey effect eases into normal rendering on release instead of cutting off.
+- Keep tracking the card at low residual speeds and invalidate it when the effect is removed to reduce stale preview frames.
+
+
 ## 1.0.7-poco
 
 - Reverted POCO task capture to child-only mode; capturing the transition root produced a persistent white frame on POCO.
