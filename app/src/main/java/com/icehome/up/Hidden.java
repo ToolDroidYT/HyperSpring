@@ -22,6 +22,28 @@ final class Hidden {
     private static Method attachAndQueue;
     private static Method relativeLayer, matrix;
     private static boolean resolved, ok;
+    private static volatile boolean captureChildrenOnly = true;
+    private static volatile boolean captureModeLogged;
+    private static volatile String lastCaptureFailure;
+
+    /** Configure the layer-capture hierarchy for the active launcher adapter. */
+    static void setCaptureChildrenOnly(boolean childrenOnly) {
+        captureChildrenOnly = childrenOnly;
+        captureModeLogged = true;
+        Log.i("genio: task capture includes root layer=" + (!childrenOnly)
+                + " (childrenOnly=" + childrenOnly + ")");
+    }
+
+    private static void captureFailed(String message, Throwable error) {
+        String key = message + (error == null ? "" : ": " + error.getClass().getName()
+                + ": " + String.valueOf(error.getMessage()));
+        if (key.equals(lastCaptureFailure)) return;
+        synchronized (Hidden.class) {
+            if (key.equals(lastCaptureFailure)) return;
+            lastCaptureFailure = key;
+        }
+        Log.w("genio: task capture failed: " + key);
+    }
 
     static synchronized boolean ok() {
         if (resolved) return ok;
@@ -75,17 +97,32 @@ final class Hidden {
      * transparencia: solo los hijos), a {@code scale} de resolución. Null si falla.
      */
     static Shot capture(SurfaceControl layer, Rect crop, float scale, SurfaceControl[] exclude) {
+        if (layer == null || !layer.isValid()) {
+            captureFailed("invalid capture root", null);
+            return null;
+        }
         try {
             Object b = argsBuilder.newInstance(layer);
             setCrop.invoke(b, crop);
             setScale.invoke(b, scale);
-            setChildrenOnly.invoke(b, true);
+            setChildrenOnly.invoke(b, captureChildrenOnly);
             if (exclude != null) setExclude.invoke(b, (Object) exclude);
             Object shot = capture.invoke(null, build.invoke(b));
-            if (shot == null) return null;
+            if (shot == null) {
+                captureFailed("ScreenCapture returned no buffer (childrenOnly="
+                        + captureChildrenOnly + ", crop=" + crop + ")", null);
+                return null;
+            }
             HardwareBuffer hb = (HardwareBuffer) hardwareBuffer.invoke(shot);
-            return hb == null ? null : new Shot(hb, (ColorSpace) colorSpace.invoke(shot));
+            if (hb == null) {
+                captureFailed("ScreenCapture returned a null HardwareBuffer (childrenOnly="
+                        + captureChildrenOnly + ", crop=" + crop + ")", null);
+                return null;
+            }
+            return new Shot(hb, (ColorSpace) colorSpace.invoke(shot));
         } catch (Throwable t) {
+            captureFailed("captureLayers exception (childrenOnly=" + captureChildrenOnly
+                    + ", crop=" + crop + ")", t);
             return null;
         }
     }
