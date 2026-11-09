@@ -143,8 +143,7 @@ final class RecentsCurtain {
                 }
             } catch (Throwable t) {
                 Log.e("cortina de recientes", t);
-                clearAll();
-                running = false;
+                stopTracking();
                 return;
             }
             if (moving || System.nanoTime() - lastKickNs < LINGER_NS) {
