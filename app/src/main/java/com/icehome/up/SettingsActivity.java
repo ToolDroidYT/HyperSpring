@@ -372,7 +372,20 @@ public class SettingsActivity extends Activity {
                         @Override
                         public void onClick(View v) {
                             send(Remote.RESET_SAFE);
-                            toast(I18n.t("Reactivado: reinicia el launcher", "Reactivated: restart the launcher"));
+                            toast(I18n.t("Solicitando reactivación…", "Requesting reactivation…"));
+                            new android.os.Handler(getMainLooper()).postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if ("0".equals(state("launcher_safe"))) {
+                                        showTab(0, false);
+                                        toast(I18n.t("Modo seguro desactivado. Reinicia el launcher.",
+                                                "Safe mode cleared. Restart the launcher."));
+                                    } else {
+                                        toast(I18n.t("No se pudo confirmar la reactivación. Copia el registro y revisa LSPosed.",
+                                                "Reactivation could not be confirmed. Copy the log and check LSPosed."));
+                                    }
+                                }
+                            }, 800);
                         }
                     }));
         }
