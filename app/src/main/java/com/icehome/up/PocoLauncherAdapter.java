@@ -9,4 +9,6 @@ final class PocoLauncherAdapter implements LauncherAdapter {
     @Override public String displayName() { return "POCO Launcher"; }
     @Override public boolean supportsWidgetStack() { return false; }
     @Override public boolean supportsFolderMorph() { return false; }
+    // POCO's transition leash may own the app buffer; include the root layer in task captures.
+    @Override public boolean captureChildrenOnly() { return false; }
 }
