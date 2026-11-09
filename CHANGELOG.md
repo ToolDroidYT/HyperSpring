@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.6-poco
+
+- POCO Genie task captures now include the transition root, not only its child layers, to avoid icon-only/blank app-window animations when the app buffer is attached to the root leash.
+- Added one-time capture failure diagnostics to the copied log.
+- Recents task-card render effects are cleared when cards are recycled or the recents stack detaches or becomes hidden.
+
+
 ## 1.0.5-poco
 
 - Fixes safe-mode reactivation across HyperOS frozen-process boundaries.

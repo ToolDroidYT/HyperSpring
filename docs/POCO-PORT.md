@@ -6,7 +6,7 @@
 - Version: `RELEASE-7.50.06.2597-09231532`
 - Version code: `750062597`
 
-The adapter reuses shared Xiaomi launcher hooks. It does not modify or replace the POCO Launcher APK.
+The adapter reuses shared Xiaomi launcher hooks. It does not modify or replace the POCO Launcher APK. POCO Genie captures include the transition root layer because its task leash may own the application buffer; the HyperOS launcher keeps child-only capture.
 
 ## Compatibility notes
 
