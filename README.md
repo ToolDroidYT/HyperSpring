@@ -49,6 +49,7 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
     <th>Curtain between screens</th>
     <th>Liquid-glass control center<br><sub>with the Mods Center iOS Control Center</sub></th>
     <th>The app</th>
+    <th>General view(smooth video)</th>
   </tr>
   <tr>
     <td><a href="docs/media/curtain.mp4"><img src="docs/media/curtain.gif" width="240" alt="Curtain transition"></a></td>
