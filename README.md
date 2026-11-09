@@ -11,6 +11,14 @@
 
 ---
 
+> [!WARNING]
+> **This repository is a fork of [olilio3/HyperSpring](https://github.com/olilio3/HyperSpring), maintained independently.**
+> This fork keeps support for the **HyperOS System Launcher** and adds support for **POCO Launcher**. Both launchers are supported through separate compatibility adapters:
+> - HyperOS System Launcher — `com.miui.home`
+> - POCO Launcher — `com.mi.android.globallauncher`
+>
+> POCO support is an additional community-maintained port and may have compatibility differences from the upstream project. Check this fork's README and release notes for supported features and known limitations.
+
 > **A Note on Development:**  
 > This project was initially built using AI to prototype the core concepts quickly. However, I am currently learning Java and **looking forward to** refactoring, maintaining, and coding everything myself as I grow as a developer! Feedback and contributions are more than welcome.
 
