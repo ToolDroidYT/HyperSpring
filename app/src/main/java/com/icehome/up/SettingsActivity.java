@@ -350,12 +350,12 @@ public class SettingsActivity extends Activity {
         if ("1".equals(state("launcher_safe"))) {
             String launcherSafeReason = state("launcher_safe_reason");
             String launcherSafeMessage;
-            if ("legacy-safe-mode".equals(launcherSafeReason)) {
+            if (launcherSafeReason == null || "legacy-safe-mode".equals(launcherSafeReason)) {
                 launcherSafeMessage = I18n.t(
                         "Modo seguro heredado: una versión anterior de HyperSpring desactivó las animaciones tras varios "
-                                + "reinicios rápidos del launcher. Eso no confirma que fueran cierres por fallo.",
+                                + "reinicios rápidos del launcher. No se guardaron datos que confirmen que fueran fallos.",
                         "Legacy safe mode: an earlier HyperSpring version disabled launcher animations after several "
-                                + "rapid process starts. That does not confirm those starts were crashes.");
+                                + "rapid process starts. No saved diagnostics confirm that those starts were crashes.");
             } else {
                 launcherSafeMessage = I18n.t(
                         "Modo seguro del escritorio: HyperSpring ha desactivado sus animaciones para proteger POCO Launcher "
@@ -366,6 +366,10 @@ public class SettingsActivity extends Activity {
             String launcherSafeDetails = state("launcher_safe_details");
             if (launcherSafeDetails != null && !launcherSafeDetails.trim().isEmpty()) {
                 launcherSafeMessage += "\n\n" + launcherSafeDetails;
+            } else {
+                launcherSafeMessage += "\n\n" + I18n.t(
+                        "No se guardó información de diagnóstico. Reactivar borra la marca heredada.",
+                        "No diagnostic details were saved. Reactivate clears the legacy flag.");
             }
             c.addView(notice(launcherSafeMessage,
                     I18n.t("Reactivar", "Reactivate"), new View.OnClickListener() {
