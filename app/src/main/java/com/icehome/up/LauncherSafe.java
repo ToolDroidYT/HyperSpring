@@ -137,7 +137,26 @@ final class LauncherSafe {
 
     /** Clear safe mode from the launcher's own process. */
     static synchronized void reset(Context context) {
-        if (file == null) return; // System UI also receives RESET_SAFE; only the launcher owns this file.
+        // RESET_SAFE is also delivered to SystemUI, so derive the launcher file from the
+        // caller's data directory instead of relying on a previous checkAtLoad() in this process.
+        if (context == null) {
+            Log.w("launcher recovery: reset request had no context");
+            return;
+        }
+        try {
+            String dir = context.getApplicationInfo() != null
+                    ? context.getApplicationInfo().dataDir : null;
+            if (dir == null || dir.isEmpty()) {
+                Log.w("launcher recovery: cannot resolve launcher data directory for reset");
+                publish(context, true, "reset-failed", "Launcher data directory unavailable");
+                return;
+            }
+            file = new File(dir, FILE);
+        } catch (Throwable t) {
+            Log.w("launcher recovery: cannot resolve launcher safe-mode file: " + t);
+            publish(context, true, "reset-failed", String.valueOf(t));
+            return;
+        }
 
         Properties p = read();
         p.setProperty("safe", "0");
@@ -147,7 +166,11 @@ final class LauncherSafe {
         p.remove("safe_reason");
         p.remove("safe_details");
         p.remove("safe_at");
-        write(p);
+        if (!write(p)) {
+            Log.w("launcher recovery: failed to persist manual safe-mode reset");
+            publish(context, true, "reset-failed", "Could not write launcher recovery state");
+            return;
+        }
         Log.i("launcher safe mode manually cleared; restart POCO Launcher to reload its features");
         publish(context, false, "manually-reset", "Safe mode was manually cleared");
     }
@@ -283,12 +306,14 @@ final class LauncherSafe {
         return p;
     }
 
-    private static void write(Properties p) {
-        if (file == null) return;
+    private static boolean write(Properties p) {
+        if (file == null) return false;
         try (FileOutputStream out = new FileOutputStream(file)) {
             p.store(out, "HyperSpring launcher recovery state");
+            return true;
         } catch (Throwable t) {
             Log.w("launcher recovery: could not write state file: " + t);
+            return false;
         }
     }
 
