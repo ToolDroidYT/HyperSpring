@@ -86,14 +86,52 @@ final class RecentsCurtain {
             return;
         }
         taskViewClass = XposedHelpers.findClass("com.miui.home.recents.views.TaskView", cl);
-        XposedBridge.hookAllMethods(XposedHelpers.findClass("com.miui.home.recents.views.TaskStackView", cl),
-                "onStackScrollChanged", new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam p) {
-                        kick((ViewGroup) p.thisObject);
-                    }
-                });
-        Log.i("cortina de recientes activa");
+        Class<?> stackClass = XposedHelpers.findClass("com.miui.home.recents.views.TaskStackView", cl);
+        XposedBridge.hookAllMethods(stackClass, "onStackScrollChanged", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                kick((ViewGroup) p.thisObject);
+            }
+        });
+
+        // TaskViews are recycled by the launcher. Never leave our RenderEffect on a detached
+        // card, or it can reappear as a stale/ghost preview when that view is reused.
+        XposedBridge.hookAllMethods(View.class, "onDetachedFromWindow", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                View v = (View) p.thisObject;
+                if (taskViewClass.isInstance(v)) clearCard(v);
+                if (v == stack) stopTracking();
+            }
+        });
+
+        // The recents container can remain attached while the launcher animates it off-screen.
+        // Clear effects as soon as it becomes hidden or transparent.
+        XposedBridge.hookAllMethods(View.class, "setVisibility", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                View v = (View) p.thisObject;
+                int visibility = (Integer) p.args[0];
+                if (taskViewClass.isInstance(v) && visibility != View.VISIBLE) clearCard(v);
+                if (v == stack && visibility != View.VISIBLE) stopTracking();
+            }
+        });
+        XposedBridge.hookAllMethods(View.class, "setAlpha", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                View v = (View) p.thisObject;
+                float alpha = (Float) p.args[0];
+                if (taskViewClass.isInstance(v) && alpha <= 0.01f) clearCard(v);
+                if (v == stack && alpha <= 0.01f) stopTracking();
+            }
+        });
+        XposedBridge.hookAllMethods(View.class, "onWindowVisibilityChanged", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                if (p.thisObject == stack && (Integer) p.args[0] != View.VISIBLE) stopTracking();
+            }
+        });
+        Log.i("cortina de recientes activa (limpieza al ocultar, reciclar o separar tarjetas)");
     }
 
     /** Las tarjetas se mueven: a medir cada fotograma hasta que paren y se enderecen. */
@@ -115,9 +153,8 @@ final class RecentsCurtain {
         @Override
         public void doFrame(long frameTimeNanos) {
             ViewGroup s = stack;
-            if (s == null || !s.isAttachedToWindow()) {
-                clearAll();
-                running = false;
+            if (s == null || !s.isAttachedToWindow() || !s.isShown()) {
+                stopTracking();
                 return;
             }
             float dt = lastFrameNs == 0 ? 0f : Math.min(0.05f, (frameTimeNanos - lastFrameNs) / 1e9f);
@@ -190,6 +227,27 @@ final class RecentsCurtain {
         cards.clear();
         stack = null;
     }
+
+    /** Remove our effect from a recycled or hidden task thumbnail immediately. */
+    private static void clearCard(View view) {
+        Card card = cards.remove(view);
+        if (card != null && card.effect) {
+            try {
+                view.setRenderEffect(null);
+            } catch (Throwable t) {
+                Log.e("cortina de recientes: limpiar tarjeta", t);
+            }
+        }
+    }
+
+    /** Stop callbacks and restore every card when the recents container leaves the screen. */
+    private static void stopTracking() {
+        clearAll();
+        running = false;
+        lastFrameNs = 0;
+        lastKickNs = 0;
+    }
+
 
     private RecentsCurtain() {
     }
