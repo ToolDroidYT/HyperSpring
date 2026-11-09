@@ -92,16 +92,16 @@ HyperSpring supports both Xiaomi launcher package targets through separate compa
 
 ### Launcher feature support
 
-| Feature | HyperOS System Launcher | POCO Launcher | Notes |
-|---|:---:|:---:|---|
-| Genie app open/close animation | ☑️ | ☑️ | Shared launcher hooks |
-| Drag-to-close lamp animation | ☑️ | ☑️ | Part of the shared app-window animation hooks |
-| Bending recents cards | ☑️ | ☑️ | POCO target symbols found during static analysis |
-| Sinking icon when pressed | ☑️ | ☑️ | POCO target symbols found during static analysis |
-| Wallpaper zoom when opening apps | ☑️ | ☑️ | POCO target symbols found during static analysis |
-| Glass folders | ☑️ | ☑️ | POCO target symbols found; behavior can depend on the launcher and OS build |
-| Springy folder resize | ☑️ | ☐ | POCO's Kashi-specific `ResizeHandle` API is absent |
-| Shuffling widget stack | ☑️ | ☐ | POCO's Kashi-specific `WidgetStack` class is absent |
+| Feature | HyperOS System Launcher | POCO Launcher |
+|---|:---:|:---:|
+| Genie app open/close animation | ☑️ | ☑️ |
+| Drag-to-close lamp animation | ☑️ | ☑️ |
+| Bending recents cards | ☑️ | ☑️ |
+| Sinking icon when pressed | ☑️ | ☑️ |
+| Wallpaper zoom when opening apps | ☑️ | ☑️ |
+| Glass folders | ☑️ | ☑️ |
+| Springy folder resize | ☑️ | ☐ |
+| Shuffling widget stack | ☑️ | ☐ |
 
 **Legend:** ☑️ supported by the adapter; ☐ not supported by that launcher adapter.
 
