@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7-poco
+
+- Reverted POCO task capture to child-only mode; capturing the transition root produced a persistent white frame on POCO.
+- Reduced Recents deformation strength and tuned the spring for a slower, smoother settle instead of an abrupt return to a rectangle.
+
+
 ## 1.0.6-poco
 
 - POCO Genie task captures now include the transition root, not only its child layers, to avoid icon-only/blank app-window animations when the app buffer is attached to the root leash.
