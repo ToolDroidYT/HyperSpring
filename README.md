@@ -54,6 +54,8 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
     <td><a href="docs/media/curtain.mp4"><img src="docs/media/curtain.gif" width="240" alt="Curtain transition"></a></td>
     <td><a href="docs/media/cc.mp4"><img src="docs/media/cc.gif" width="240" alt="Liquid-glass control center"></a></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="HyperSpring settings app"></a></td>
+    <td><a href="docs/media/demo-sin-wifi.mp4"><img src="docs/media/demo-sin-wifi.mp4" width="400" alt="HyperSpring effect general view"></a></td>
+
   </tr>
 </table>
 
