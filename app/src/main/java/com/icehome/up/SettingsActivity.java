@@ -651,13 +651,15 @@ public class SettingsActivity extends Activity {
             if (parts.length > 1) ver = parts[1];
         }
         boolean active = when >= bootTime();
+        boolean safe = "launcher_seen".equals(stateKey) && "1".equals(state("launcher_safe"));
         boolean old = active && !"cc_seen".equals(stateKey) && ver != null && !ver.equals(Version.NAME);
-        String label = !active ? (when > 0 ? I18n.t("Sin cargar", "Not loaded") : I18n.t("No detectado", "Not detected"))
+        String label = safe ? I18n.t("Modo seguro", "Safe mode")
+                : !active ? (when > 0 ? I18n.t("Sin cargar", "Not loaded") : I18n.t("No detectado", "Not detected"))
                 : old ? I18n.t("Reiniciar", "Restart") : I18n.t("Activo", "Active");
-        TextView pill = text(label, 13, active && !old ? onAccent : text);
+        TextView pill = text(label, 13, safe ? text : active && !old ? onAccent : text);
         pill.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         pill.setPadding(px(12), px(5), px(12), px(5));
-        pill.setBackground(round(active && !old ? accent : track, px(12)));
+        pill.setBackground(round(safe ? warn : active && !old ? accent : track, px(12)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.leftMargin = px(12);
         r.addView(pill, lp);
