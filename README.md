@@ -85,14 +85,31 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
 
 ## Launcher compatibility
 
-HyperSpring supports both Xiaomi launcher package targets through launcher adapters:
+HyperSpring supports both Xiaomi launcher package targets through separate compatibility adapters:
 
 - **HyperOS System Launcher:** `com.miui.home` (existing target).
-- **POCO Launcher:** `com.mi.android.globallauncher` (static DEX analysis target: `RELEASE-7.50.06.2597-09231532`, version code `750062597`).
+- **POCO Launcher:** `com.mi.android.globallauncher` (analyzed target: `RELEASE-7.50.06.2597-09231532`, version code `750062597`).
 
-The POCO adapter reuses the shared Xiaomi launcher hooks found in that APK. Kashi-only WidgetStack and folder-resize features are disabled for POCO because their custom classes are absent. Other features remain subject to on-device validation; static DEX symbol checks are not runtime certification.
+### Launcher feature support
 
-See [`docs/POCO-PORT.md`](docs/POCO-PORT.md) for the compatibility report and test checklist.
+| Feature | HyperOS System Launcher | POCO Launcher | Notes |
+|---|:---:|:---:|---|
+| Genie app open/close animation | ☑️ | ☑️ | Shared launcher hooks |
+| Drag-to-close lamp animation | ☑️ | ☑️ | Part of the shared app-window animation hooks |
+| Bending recents cards | ☑️ | ☑️ | POCO target symbols found during static analysis |
+| Sinking icon when pressed | ☑️ | ☑️ | POCO target symbols found during static analysis |
+| Wallpaper zoom when opening apps | ☑️ | ☑️ | POCO target symbols found during static analysis |
+| Glass folders | ☑️ | ☑️ | POCO target symbols found; behavior can depend on the launcher and OS build |
+| Springy folder resize | ☑️ | ☐ | POCO's Kashi-specific `ResizeHandle` API is absent |
+| Shuffling widget stack | ☑️ | ☐ | POCO's Kashi-specific `WidgetStack` class is absent |
+
+**Legend:** ☑️ supported by the adapter; ☐ not supported by that launcher adapter.
+
+The POCO adapter reuses the shared Xiaomi launcher hooks found in the analyzed APK. Its two unsupported Kashi-only integrations (widget stack and springy folder resize) are deliberately disabled. POCO compatibility is based on static DEX analysis plus device testing; static symbol checks alone do not guarantee identical behavior across launcher releases.
+
+**System UI features** (the curtain transition and liquid-glass control center) are hooked separately from the launcher and are not specific to either launcher adapter. Their compatibility depends on the HyperOS System UI and control-center implementation.
+
+See [`docs/POCO-PORT.md`](docs/POCO-PORT.md) for the detailed compatibility report and test checklist.
 
 ## Features
 
