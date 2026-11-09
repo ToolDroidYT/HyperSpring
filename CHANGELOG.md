@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.5-poco
+
+- Fixes safe-mode reactivation across HyperOS frozen-process boundaries.
+- SystemUI queues a one-shot reset request; POCO Launcher consumes it in its own process and clears its own recovery file.
+- Restarts the launcher after queuing the reset and allows more time for status confirmation.
+
+
 ## 1.0.4-poco
 
 - Fixes launcher reactivation when the recovery-state file was not initialized in memory.
