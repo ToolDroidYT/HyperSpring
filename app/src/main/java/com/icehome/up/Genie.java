@@ -555,15 +555,21 @@ final class Genie {
 
     /** La captura precargada de esta tarea, si es reciente (una sola vez). */
     private static Hidden.Shot takePreShot(int taskId) {
+        Hidden.Shot stale = null;
         synchronized (PRE) {
             Hidden.Shot s = preShot;
-            if (s == null || taskId == -1 || preTask != taskId
-                    || SystemClock.uptimeMillis() - preShotMs > PRELOAD_MS) {
-                return null;
-            }
+            if (s == null) return null;
+            boolean usable = taskId != -1 && preTask == taskId
+                    && SystemClock.uptimeMillis() - preShotMs <= PRELOAD_MS;
             preShot = null;
-            return s;
+            preTask = -1;
+            preShotMs = 0;
+            if (usable) return s;
+            stale = s;
         }
+        // Do not retain an expired or mismatched HardwareBuffer until another gesture arrives.
+        release(stale);
+        return null;
     }
 
     /**
