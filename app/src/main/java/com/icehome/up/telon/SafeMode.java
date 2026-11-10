@@ -22,8 +22,9 @@ public final class SafeMode {
 
     static final String KEY = "telon_safe_mode";
     private static final String STARTS = "telon_starts", LAST = "telon_last_start";
+    private static final String INTENTIONAL_RESTART = "hyperspring_sysui_intentional_restart_at";
     private static final int LIMIT = 3;
-    private static final long QUICK_MS = 60_000, STABLE_MS = 30_000;
+    private static final long QUICK_MS = 60_000, STABLE_MS = 30_000, INTENTIONAL_TTL_MS = 120_000;
 
     /** Al cargar SystemUI: cuenta el arranque; true si hay que cargar Telón. */
     public static boolean checkAtLoad(Context c) {
@@ -35,6 +36,17 @@ public final class SafeMode {
                 return false;
             }
             long now = System.currentTimeMillis();
+            long intentionalAt = Settings.Global.getLong(r, INTENTIONAL_RESTART, 0);
+            if (intentionalAt != 0L) {
+                // A Settings-triggered restart is not evidence of a SystemUI crash loop.
+                Settings.Global.putLong(r, INTENTIONAL_RESTART, 0L);
+                if (now >= intentionalAt && now - intentionalAt <= INTENTIONAL_TTL_MS) {
+                    Settings.Global.putLong(r, LAST, now);
+                    Settings.Global.putInt(r, STARTS, 0);
+                    Log.i("reinicio intencional de SystemUI reconocido; no cuenta como fallo");
+                    return true;
+                }
+            }
             long last = Settings.Global.getLong(r, LAST, 0);
             int starts = now - last < QUICK_MS ? Settings.Global.getInt(r, STARTS, 0) + 1 : 1;
             Settings.Global.putLong(r, LAST, now);
@@ -49,6 +61,16 @@ public final class SafeMode {
             Log.e("modo seguro: no se pudo contar el arranque", t);
         }
         return true;
+    }
+
+    /** Marca una orden de reinicio emitida desde Ajustes antes de cerrar SystemUI. */
+    public static void markIntentionalRestart(Context c) {
+        if (c == null) return;
+        try {
+            Settings.Global.putLong(c.getContentResolver(), INTENTIONAL_RESTART, System.currentTimeMillis());
+        } catch (Throwable t) {
+            Log.e("no se pudo marcar el reinicio intencional de SystemUI", t);
+        }
     }
 
     /** Con SystemUI ya en marcha: si aguanta un rato, el arranque fue bueno. */
