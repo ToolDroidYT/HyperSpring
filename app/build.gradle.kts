@@ -6,7 +6,7 @@ plugins {
 val moduleVersion = file("src/main/java/com/icehome/up/Version.java").readText()
 val moduleVersionName = Regex("""NAME = "([^"]+)"""").find(moduleVersion)?.groupValues?.get(1)
     ?: error("Could not read Version.NAME")
-val moduleVersionCode = Regex("""CODE = (\\d+)""").find(moduleVersion)?.groupValues?.get(1)?.toInt()
+val moduleVersionCode = Regex("""CODE = ([0-9]+)""").find(moduleVersion)?.groupValues?.get(1)?.toInt()
     ?: error("Could not read Version.CODE")
 
 android {
