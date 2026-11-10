@@ -96,6 +96,7 @@ final class Remote {
                 } else if (RESTART_LAUNCHER.equals(i.getAction())) {
                     stopLauncher(c);
                 } else {
+                    SafeMode.markIntentionalRestart(c);
                     android.os.Process.killProcess(android.os.Process.myPid());   // el sistema lo relanza
                 }
             }
