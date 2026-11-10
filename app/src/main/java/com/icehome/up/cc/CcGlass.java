@@ -28,6 +28,7 @@ import android.view.animation.PathInterpolator;
 import android.widget.TextView;
 
 import java.lang.reflect.Method;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -124,7 +125,15 @@ public final class CcGlass {
 
     // ---------------------------------------------------------------- estado
     private static final Set<ClassLoader> PLUGIN = Collections.newSetFromMap(new WeakHashMap<ClassLoader, Boolean>());
-    private static final Map<View, Skin> SKINS = new WeakHashMap<>();
+    private static final Map<View, WeakReference<Skin>> SKINS = new WeakHashMap<>();
+
+    /** Values must not strongly reference WeakHashMap keys through the map itself. */
+    private static Skin skin(View view) {
+        WeakReference<Skin> ref = SKINS.get(view);
+        Skin value = ref == null ? null : ref.get();
+        if (value == null && ref != null) SKINS.remove(view);
+        return value;
+    }
     private static boolean shaderBroken, frameworkHooked, frameworkTried;
 
     // Motor nativo de HyperOS 4
@@ -183,7 +192,7 @@ public final class CcGlass {
                             }
                             return;
                         }
-                        Skin s = SKINS.get(v);
+                        Skin s = skin(v);
                         if (s != null) s.drawUnder((Canvas) p.args[0]);
                     }
                 });
@@ -235,9 +244,9 @@ public final class CcGlass {
                 }
             }
             float active = clamp01((a - 0.25f) / 0.65f);
-            Skin prev = SKINS.get(v);
+            Skin prev = skin(v);
             apply(v, prev != null && prev.pinned ? -1f : active, false);   // fijada por su clase: no se pisa
-            Skin s = SKINS.get(v);
+            Skin s = skin(v);
             if (s == null) return;
             if (s.blendActive != active) {
                 s.blendActive = active;             // la mezcla también dice si está encendida
@@ -335,7 +344,7 @@ public final class CcGlass {
     }
 
     private static void off(View v) {
-        Skin s = SKINS.get(v);
+        Skin s = skin(v);
         if (s != null && !s.strong) s.setOn(false);
     }
 
@@ -344,12 +353,12 @@ public final class CcGlass {
         if (v == null || v instanceof TextView) return;
         if (v.getParent() != null && !ours(v)) return;     // p. ej. notificaciones de SystemUI
         apply(v, -1f, false);
-        Skin s = SKINS.get(v);
+        Skin s = skin(v);
         if (s != null) s.strong = true;
     }
 
     static void strongOff(View v) {
-        Skin s = v == null ? null : SKINS.get(v);
+        Skin s = v == null ? null : skin(v);
         if (s != null) {
             s.strong = false;
             s.setOn(false);
@@ -390,7 +399,7 @@ public final class CcGlass {
                 prog = XposedHelpers.getFloatField(tv, "iconProgress");
             } catch (Throwable ignored) {
             }
-            Skin sk = SKINS.get(icon);
+            Skin sk = skin(icon);
             boolean on = prog >= 0.5f || (sk != null && sk.blendActive >= 0.5f);
             boolean solidBg = false;
             Drawable d = ((android.widget.ImageView) icon).getDrawable();
@@ -413,10 +422,10 @@ public final class CcGlass {
                 if (f.equals("disabledBg")) keep = false;
                 if (bg.getColorFilter() != (keep ? null : CLEAR)) bg.setColorFilter(keep ? null : CLEAR);
             }
-            Skin s = SKINS.get(icon);
+            Skin s = skin(icon);
             if (s == null) {
                 apply(icon, clamp01(prog), false);   // fichas sin mezcla de MIUI (grandes del mod)
-                s = SKINS.get(icon);
+                s = skin(icon);
             } else {
                 s.setActive(clamp01(prog), false);
             }
@@ -443,7 +452,6 @@ public final class CcGlass {
 
     // ---------------------------------------------------------------- recorrido de ventanas
     private static final Set<View> ROOTS = Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
-    private static final Map<View, Runnable> WALKS = new WeakHashMap<>();
 
     /**
      * Vigila una ventana del centro de control: tras cada layout (debounce 120 ms) la recorre y
@@ -463,7 +471,6 @@ public final class CcGlass {
                 }
             }
         };
-        WALKS.put(root, walk);
         root.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
             public void onGlobalLayout() {
@@ -482,10 +489,10 @@ public final class CcGlass {
             android.view.ViewGroup g = (android.view.ViewGroup) v;
             for (int i = 0; i < g.getChildCount(); i++) best = Math.max(best, walkInto(g.getChildAt(i), depth + 1));
         }
-        Skin s = SKINS.get(v);
+        Skin s = skin(v);
         if (s == null && candidate(v)) {
             apply(v, -1f, false);
-            s = SKINS.get(v);
+            s = skin(v);
             if (s != null) s.auto = true;
         }
         if (s == null) return best;
@@ -866,7 +873,10 @@ public final class CcGlass {
                             backdropScale = scale;
                             bgSoft = soft;
                             bgSoftScale = softScale;
-                            for (Skin s : SKINS.values()) s.backdropChanged();
+                            for (WeakReference<Skin> ref : SKINS.values()) {
+                                Skin s = ref.get();
+                                if (s != null) s.backdropChanged();
+                            }
                             View root = ccRoot != null ? ccRoot.get() : null;
                             if (root != null) root.invalidate();
                         }
@@ -913,7 +923,9 @@ public final class CcGlass {
                             backdrop = small;
                             backdropScale = 1f / (SAMPLE_DP * lastDensity);
                         }
-                        for (Skin s : SKINS.values()) {
+                        for (WeakReference<Skin> ref : SKINS.values()) {
+                            Skin s = ref.get();
+                            if (s == null) continue;
                             s.miCleared = s.miCleared && Tune.ccOn;
                             s.backdropChanged();
                             s.syncMiBlur();
@@ -986,7 +998,7 @@ public final class CcGlass {
                         Object st = XposedHelpers.getObjectField(p.thisObject, "state");
                         boolean on = st != null && XposedHelpers.getIntField(st, "state") == 2;
                         apply((View) p.thisObject, on ? 1f : 0f, true);
-                        Skin sk = SKINS.get((View) p.thisObject);
+                        Skin sk = skin((View) p.thisObject);
                         if (sk != null) sk.pinned = true;
                     } catch (Throwable t) {
                         once("card", t);
@@ -1040,7 +1052,7 @@ public final class CcGlass {
     /** Piezas que no deben ser cristal (relleno de los sliders): se quita y se restaura MIUI. */
     static void exclude(View v) {
         if (v == null || !EXCLUDED.add(v)) return;
-        Skin s = SKINS.get(v);
+        Skin s = skin(v);
         if (s != null) {
             if (s.miCleared && s.lastBlend != null) miRestore(v, s.lastBlend);
             s.miCleared = false;
@@ -1056,10 +1068,10 @@ public final class CcGlass {
             nativeGlass(v, active);
             return;
         }
-        Skin s = SKINS.get(v);
+        Skin s = skin(v);
         if (s == null) {
             s = new Skin(v);
-            SKINS.put(v, s);
+            SKINS.put(v, new WeakReference<>(s));
             v.getOverlay().add(s);
             if (FULL_GLASS && v.willNotDraw()) v.setWillNotDraw(false);   // para que se llame drawBackground
             final Skin fs = s;
@@ -1159,6 +1171,7 @@ public final class CcGlass {
         private float thick;
         private float band;
         private final int[] loc = new int[2];
+        private final float[] scaleScratch = new float[2];
         private final int[] last = {Integer.MIN_VALUE, 0};
         private float lastSx = -1, lastSy = -1;
         private boolean tracking;
@@ -1195,8 +1208,8 @@ public final class CcGlass {
                 public boolean onPreDraw() {
                     if (backdrop == null || !on || !eligible || !host.isAttachedToWindow()) return true;
                     host.getLocationOnScreen(loc);
-                    float[] sc = chainScale(host);
-                    if (loc[0] != last[0] || loc[1] != last[1] || sc[0] != lastSx || sc[1] != lastSy) {
+                    chainScale(host, scaleScratch);
+                    if (loc[0] != last[0] || loc[1] != last[1] || scaleScratch[0] != lastSx || scaleScratch[1] != lastSy) {
                         invalidateSelf();
                         if (underDrawn) host.invalidate();
                     }
@@ -1322,13 +1335,13 @@ public final class CcGlass {
                 boundBackdrop = b;
             }
             host.getLocationOnScreen(loc);
-            float[] sc = chainScale(host);
+            chainScale(host, scaleScratch);
             last[0] = loc[0];
             last[1] = loc[1];
-            lastSx = sc[0];
-            lastSy = sc[1];
+            lastSx = scaleScratch[0];
+            lastSy = scaleScratch[1];
             rs.setFloatUniform("origin", loc[0] * backdropScale, loc[1] * backdropScale);
-            rs.setFloatUniform("scale", sc[0] * backdropScale, sc[1] * backdropScale);
+            rs.setFloatUniform("scale", scaleScratch[0] * backdropScale, scaleScratch[1] * backdropScale);
             rs.setFloatUniform("hasWall", 1f);
             return true;
         }
@@ -1393,13 +1406,13 @@ public final class CcGlass {
                     underBackdrop = b;
                 }
                 host.getLocationOnScreen(loc);
-                float[] sc = chainScale(host);
+                chainScale(host, scaleScratch);
                 last[0] = loc[0];
                 last[1] = loc[1];
-                lastSx = sc[0];
-                lastSy = sc[1];
+                lastSx = scaleScratch[0];
+                lastSy = scaleScratch[1];
                 u.setFloatUniform("origin", loc[0] * scaleB, loc[1] * scaleB);
-                u.setFloatUniform("scale", sc[0] * scaleB, sc[1] * scaleB);
+                u.setFloatUniform("scale", scaleScratch[0] * scaleB, scaleScratch[1] * scaleB);
                 u.setFloatUniform("hasWall", 1f);
                 u.setFloatUniform("fill", 1f);
                 u.setFloatUniform("bandAlpha", 1f);
@@ -1544,13 +1557,14 @@ public final class CcGlass {
         return Math.min(22 * d, half);
     }
 
-    private static float[] chainScale(View v) {
+    private static void chainScale(View v, float[] out) {
         float sx = 1f, sy = 1f;
         for (View c = v; c != null; c = c.getParent() instanceof View ? (View) c.getParent() : null) {
             sx *= c.getScaleX();
             sy *= c.getScaleY();
         }
-        return new float[]{sx, sy};
+        out[0] = sx;
+        out[1] = sy;
     }
 
     private static int hookAll(Class<?> c, XC_MethodHook h, String... names) {
@@ -1597,10 +1611,11 @@ public final class CcGlass {
                 + " capturaRota=" + captureBroken + " shaderRoto=" + shaderBroken + " piezas=" + SKINS.size());
         XposedBridge.log(sb.toString());
         int n = 0;
-        for (Map.Entry<View, Skin> e : SKINS.entrySet()) {
+        for (Map.Entry<View, WeakReference<Skin>> e : SKINS.entrySet()) {
             View v = e.getKey();
-            Skin s = e.getValue();
-            if (v == null || !v.isAttachedToWindow() || v.getWidth() == 0) continue;
+            WeakReference<Skin> ref = e.getValue();
+            Skin s = ref == null ? null : ref.get();
+            if (v == null || s == null || !v.isAttachedToWindow() || v.getWidth() == 0) continue;
             if (++n > 45) break;
             Drawable bg = v.getBackground();
             String img = "";
@@ -1644,8 +1659,9 @@ public final class CcGlass {
     /** Piezas con cristal ahora mismo (tarjetas y botones), para la apertura por capas. */
     static java.util.List<View> glassHosts() {
         java.util.List<View> out = new java.util.ArrayList<>();
-        for (Map.Entry<View, Skin> e : SKINS.entrySet()) {
-            Skin sk = e.getValue();
+        for (Map.Entry<View, WeakReference<Skin>> e : SKINS.entrySet()) {
+            WeakReference<Skin> ref = e.getValue();
+            Skin sk = ref == null ? null : ref.get();
             if (e.getKey() != null && sk != null && !sk.suppressed) out.add(e.getKey());
         }
         return out;
