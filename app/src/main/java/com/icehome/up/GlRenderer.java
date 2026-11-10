@@ -99,8 +99,11 @@ final class GlRenderer {
             + "    cc += bend * (1.0 - n) * (1.0 - n);\n"
             + "    return vec2(cc - hc, cc + hc);\n"
             + "  }\n"
-            + "  float k = pow(q, mix(g.y, g.z, n));\n"
-            + "  float w = pow(q, max(g.z - 1.0, 0.0) * n * n);\n"
+            // Genio clásico: la misma desaparición cerca del icono (Genie.shape) para salir
+            // del icono y volver a él sin saltos.
+            + "  float envc = smoothstep(0.0, 0.12, q);\n"
+            + "  float k = mix(q, pow(q, mix(g.y, g.z, n)), envc);\n"
+            + "  float w = mix(1.0, pow(q, max(g.z - 1.0, 0.0) * n * n), envc);\n"
             + "  float c = mix((icon.x + icon.z) * 0.5, (cur.x + cur.z) * 0.5, w);\n"
             + "  c += bend * (1.0 - n) * (1.0 - n);\n"
             + "  float h = mix((icon.z - icon.x) * 0.5, fullHalf, k);\n"
@@ -548,7 +551,10 @@ final class GlRenderer {
             GLES20.glUniform4f(p.g, g.pw, g.lead, g.lag, g.radius);
             GLES20.glUniform1f(p.iconMix, g.iconMix);
             GLES20.glUniform1f(p.fullHalf, fullHalf);
-            GLES20.glUniform4f(p.bg, ((bg >> 16) & 255) / 255f, ((bg >> 8) & 255) / 255f, (bg & 255) / 255f, 1f);
+            // Color de la app bajo el contenido, premultiplicado (transparente al cerrar: ver Genie).
+            float bgA = (bg >>> 24) / 255f;
+            GLES20.glUniform4f(p.bg, ((bg >> 16) & 255) / 255f * bgA, ((bg >> 8) & 255) / 255f * bgA,
+                    (bg & 255) / 255f * bgA, bgA);
             GLES20.glUniform1f(p.scale, scale);
             GLES20.glUniform1f(p.bufH, height);
             GLES20.glUniform2f(p.buf, width, height);

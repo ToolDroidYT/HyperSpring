@@ -615,10 +615,11 @@ public final class Telon {
         return captureThread;
     }
 
+    /** Hilos que pueden usar todas las CPU (ver com.icehome.up.Threads). */
     private static Handler start(String name, int prio) {
-        HandlerThread t = new HandlerThread(name, prio);
-        t.start();
-        return new Handler(t.getLooper());
+        Handler h = com.icehome.up.Threads.start(name, prio);
+        Log.i("hilo " + com.icehome.up.Threads.describe(h));
+        return h;
     }
 
     private static Field field(Class<?> c, String name) {

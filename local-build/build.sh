@@ -37,7 +37,11 @@ java -cp "$JADX_JAR" com.android.tools.r8.D8 --release --min-api 30 --lib "$ANDR
   --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
 
 # 4) Recursos + manifiesto con aapt2 (incluido en apktool)
-AAPT2="$OUT/aapt2"; unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2_64 > "$AAPT2"; chmod +x "$AAPT2"
+# apktool 2.x lo llama aapt2_64; apktool 3.x, aapt2.
+AAPT2="$OUT/aapt2"
+unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2_64 > "$AAPT2" 2>/dev/null || true
+[ -s "$AAPT2" ] || unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2 > "$AAPT2"
+chmod +x "$AAPT2"
 "$AAPT2" compile --dir app/src/main/res -o "$OUT/res/res.zip"
 # Gradle inyecta el package desde "namespace"; aquí lo añadimos a mano
 sed 's#<manifest #<manifest package="com.icehome.up" #' app/src/main/AndroidManifest.xml > "$OUT/AndroidManifest.xml"

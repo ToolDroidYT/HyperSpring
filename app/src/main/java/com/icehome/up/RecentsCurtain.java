@@ -4,6 +4,7 @@ import android.graphics.RenderEffect;
 import android.graphics.RuntimeShader;
 import android.os.Build;
 import android.view.Choreographer;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -23,6 +24,12 @@ import de.robv.android.xposed.XposedHelpers;
  * pantalla, así vale para cualquier estilo de recientes (en pila como iOS, horizontal…): en la
  * pila cada tarjeta va a su velocidad y se dobla según la suya. Solo funciona mientras algo se
  * mueve; quietas, las tarjetas no llevan efecto (cero coste).
+ *
+ * Solo se doblan cuando las mueve el dedo (y durante la inercia al soltarlas), no con las
+ * animaciones propias de MIUI al entrar o salir de recientes: ahí quedaba raro. El efecto entra y
+ * sale con un fundido ({@code amount}) en vez de quitarse de golpe, y se limpia de cada tarjeta que
+ * el sistema oculta o recicla (si no, una tarjeta reciclada podía volver a salir doblada).
+ * Parte de esta limpieza se basa en el fork de ToolDroidYT (github.com/ToolDroidYT/hyperspring).
  */
 final class RecentsCurtain {
 
@@ -41,6 +48,7 @@ final class RecentsCurtain {
             + "uniform float2 size;\n"
             + "uniform float bend;\n"
             + "uniform float mode;\n"
+            + "uniform float amount;\n"
             + "half4 main(float2 p) {\n"
             + "  float w = size.x;\n"
             + "  float s = (w - abs(bend)) / w;\n"
@@ -50,8 +58,9 @@ final class RecentsCurtain {
             + "  float off = bend * prof + mix(max(-bend, 0.0), max(bend, 0.0), mode);\n"
             + "  float x = (p.x - off) / s;\n"
             + "  float edge = clamp(min(x, w - x) * s + 0.5, 0.0, 1.0);\n"
-            + "  if (edge <= 0.0) { return half4(0.0); }\n"
-            + "  return content.eval(float2(clamp(x, 0.0, w), p.y)) * half(edge);\n"
+            + "  half4 bent = edge <= 0.0 ? half4(0.0) : content.eval(float2(clamp(x, 0.0, w), p.y)) * half(edge);\n"
+            + "  if (amount >= 1.0) { return bent; }\n"
+            + "  return mix(content.eval(p), bent, half(clamp(amount, 0.0, 1.0)));\n"
             + "}\n";
 
     /** Doblez por velocidad (px de doblez por px/s) y máximo (fracción del ancho de la tarjeta). */
@@ -61,7 +70,11 @@ final class RecentsCurtain {
     /** Por debajo de esto (px) la tarjeta va sin efecto. */
     private static final float EPS = 0.3f;
     /** Tras el último desplazamiento, se sigue midiendo este tiempo (inercia, muelle). */
-    private static final long LINGER_NS = 250_000_000L;
+    private static final long LINGER_NS = 300_000_000L;
+    /** Fundido del efecto al aparecer y al irse (s). */
+    private static final float BLEND_IN_S = 0.06f, BLEND_OUT_S = 0.14f;
+    /** Tras levantar el dedo, las tarjetas aún se doblan con la inercia este tiempo. */
+    private static final long FLING_NS = 700_000_000L;
 
     static volatile float strength = 1f;
     /** 0 = cortina (se dobla el centro), 1 = telón (arriba fija, se dobla abajo). */
@@ -72,12 +85,27 @@ final class RecentsCurtain {
     private static ViewGroup stack;
     private static boolean running;
     private static long lastKickNs, lastFrameNs;
+    /** Dedo en recientes (hilo principal); si nunca llega un toque, no se filtra nada. */
+    private static boolean touching, touchSeen;
+    private static long releasedNs;
+
+    private static final View.OnAttachStateChangeListener STACK_GONE = new View.OnAttachStateChangeListener() {
+        @Override
+        public void onViewAttachedToWindow(View v) {
+        }
+
+        @Override
+        public void onViewDetachedFromWindow(View v) {
+            if (v == stack) stopTracking();
+        }
+    };
 
     /** Estado de una tarjeta (solo hilo principal). */
     private static final class Card {
-        float x, v, b, bv;
+        float x, v, b, bv, blend;
         boolean init, effect;
         RuntimeShader shader;
+        View.OnAttachStateChangeListener gone;
     }
 
     static void install(ClassLoader cl) {
@@ -86,22 +114,55 @@ final class RecentsCurtain {
             return;
         }
         taskViewClass = XposedHelpers.findClass("com.miui.home.recents.views.TaskView", cl);
-        XposedBridge.hookAllMethods(XposedHelpers.findClass("com.miui.home.recents.views.TaskStackView", cl),
-                "onStackScrollChanged", new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam p) {
-                        kick((ViewGroup) p.thisObject);
-                    }
-                });
-        Log.i("cortina de recientes activa");
+        Class<?> stackClass = XposedHelpers.findClass("com.miui.home.recents.views.TaskStackView", cl);
+        XposedBridge.hookAllMethods(stackClass, "onStackScrollChanged", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                kick((ViewGroup) p.thisObject);
+            }
+        });
+        // El dedo: se observa sin consumir nada (los métodos que la clase tenga declarados).
+        XC_MethodHook touch = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam p) {
+                if (p.args.length == 1 && p.args[0] instanceof MotionEvent) onTouch((MotionEvent) p.args[0]);
+            }
+        };
+        int hooked = XposedBridge.hookAllMethods(stackClass, "dispatchTouchEvent", touch).size()
+                + XposedBridge.hookAllMethods(stackClass, "onInterceptTouchEvent", touch).size()
+                + XposedBridge.hookAllMethods(stackClass, "onTouchEvent", touch).size();
+        Log.i("cortina de recientes activa" + (hooked > 0 ? " (solo al mover con el dedo)" : " (sin toques: con cualquier movimiento)"));
+    }
+
+    private static void onTouch(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_MOVE:
+                touchSeen = true;
+                touching = true;
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (touching) releasedNs = System.nanoTime();
+                touching = false;
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** ¿Lo mueve el usuario? (dedo abajo o inercia justo después). */
+    private static boolean userMoving() {
+        return !touchSeen || touching || System.nanoTime() - releasedNs < FLING_NS;
     }
 
     /** Las tarjetas se mueven: a medir cada fotograma hasta que paren y se enderecen. */
     private static void kick(ViewGroup s) {
         if (strength <= 0f) return;
         if (stack != s) {
-            clearAll();
+            stopTracking();
             stack = s;
+            s.addOnAttachStateChangeListener(STACK_GONE);
         }
         lastKickNs = System.nanoTime();
         if (!running) {
@@ -115,9 +176,8 @@ final class RecentsCurtain {
         @Override
         public void doFrame(long frameTimeNanos) {
             ViewGroup s = stack;
-            if (s == null || !s.isAttachedToWindow()) {
-                clearAll();
-                running = false;
+            if (s == null || !s.isAttachedToWindow() || !s.isShown()) {
+                stopTracking();
                 return;
             }
             float dt = lastFrameNs == 0 ? 0f : Math.min(0.05f, (frameTimeNanos - lastFrameNs) / 1e9f);
@@ -131,8 +191,7 @@ final class RecentsCurtain {
                 }
             } catch (Throwable t) {
                 Log.e("cortina de recientes", t);
-                clearAll();
-                running = false;
+                stopTracking();
                 return;
             }
             if (moving || System.nanoTime() - lastKickNs < LINGER_NS) {
@@ -145,11 +204,7 @@ final class RecentsCurtain {
 
     /** Un fotograma de una tarjeta; true si aún se mueve o se está enderezando. */
     private static boolean step(View view, float dt) {
-        Card c = cards.get(view);
-        if (c == null) {
-            c = new Card();
-            cards.put(view, c);
-        }
+        Card c = cardFor(view);
         float x = view.getX() + view.getWidth() * 0.5f;
         if (!c.init || dt <= 0f) {
             c.x = x;
@@ -160,35 +215,82 @@ final class RecentsCurtain {
         c.x = x;
         c.v += (vNow - c.v) * 0.5f;                            // los fotogramas no van parejos
         float max = view.getWidth() * MAX;
-        float target = max * (float) Math.tanh(c.v * GAIN * strength / max);
+        float target = userMoving() ? max * (float) Math.tanh(c.v * GAIN * strength / max) : 0f;
         float damp = 2f * ZETA * (float) Math.sqrt(K);
         for (float left = dt; left > 0f; left -= 0.004f) {
             float h = Math.min(0.004f, left);
             c.bv += (K * (target - c.b) - damp * c.bv) * h;
             c.b += c.bv * h;
         }
-        boolean active = Math.abs(c.b) > EPS || Math.abs(c.bv) > 5f;
+        boolean bending = Math.abs(c.b) > EPS || Math.abs(c.bv) > 5f;
+        float want = bending ? 1f : 0f;
+        c.blend += (want - c.blend) * (1f - (float) Math.exp(-dt / (want > c.blend ? BLEND_IN_S : BLEND_OUT_S)));
+        boolean active = bending || c.blend > 0.01f;
         if (active) {
             if (c.shader == null) c.shader = new RuntimeShader(AGSL);
             c.shader.setFloatUniform("size", view.getWidth(), view.getHeight());
             c.shader.setFloatUniform("bend", c.b);
             c.shader.setFloatUniform("mode", mode);
+            c.shader.setFloatUniform("amount", Math.min(1f, c.blend));
             view.setRenderEffect(RenderEffect.createRuntimeShaderEffect(c.shader, "content"));
             c.effect = true;
         } else if (c.effect) {
             view.setRenderEffect(null);
             c.effect = false;
-            c.b = c.bv = 0f;
+            c.b = c.bv = c.blend = 0f;
         }
         return active || Math.abs(c.v) > 20f;
     }
 
+    /** Estado de la tarjeta; al ocultarla o reciclarla el sistema, se le quita el efecto. */
+    private static Card cardFor(final View view) {
+        Card c = cards.get(view);
+        if (c != null) return c;
+        c = new Card();
+        c.gone = new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                clearCard(v);
+            }
+        };
+        view.addOnAttachStateChangeListener(c.gone);
+        cards.put(view, c);
+        return c;
+    }
+
+    private static void clearCard(View view) {
+        Card c = cards.remove(view);
+        if (c == null) return;
+        if (c.gone != null) view.removeOnAttachStateChangeListener(c.gone);
+        if (c.effect) {
+            try {
+                view.setRenderEffect(null);
+            } catch (Throwable t) {
+                Log.e("cortina de recientes: limpiar tarjeta", t);
+            }
+        }
+    }
+
     private static void clearAll() {
-        for (java.util.Map.Entry<View, Card> e : cards.entrySet()) {
-            if (e.getValue().effect && e.getKey() != null) e.getKey().setRenderEffect(null);
+        for (View v : new java.util.ArrayList<>(cards.keySet())) {
+            if (v != null) clearCard(v);
         }
         cards.clear();
+    }
+
+    /** Recientes se oculta o se quita: se para el bucle y se enderezan todas las tarjetas. */
+    private static void stopTracking() {
+        ViewGroup old = stack;
         stack = null;
+        if (old != null) old.removeOnAttachStateChangeListener(STACK_GONE);
+        clearAll();
+        running = false;
+        lastFrameNs = 0;
+        touching = false;
     }
 
     private RecentsCurtain() {

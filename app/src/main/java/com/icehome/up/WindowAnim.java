@@ -625,7 +625,10 @@ final class WindowAnim {
         f.targetView = null;
         f.bg = 0;
         boolean wantIcon = f.hasIcon && (starting || Genie.needsIcon(impl));
-        if (starting || wantIcon) {
+        // MIUI fija el color del velo (el de la ventana de inicio de la app) cuando el sistema
+        // responde a la apertura, unos fotogramas después de empezar: hasta tenerlo, se relee.
+        boolean wantShade = open && (starting || Genie.needsShade(impl));
+        if (starting || wantIcon || wantShade) {
             Object icons = floatingIcons.invoke(ctx);
             Object first = icons != null && Array.getLength(icons) > 0 ? Array.get(icons, 0) : null;
             if (starting) {
@@ -635,8 +638,8 @@ final class WindowAnim {
                     return;
                 }
                 f.exclude = iconLayers(icons);
-                if (first != null) f.bg = (Integer) shade.invoke(first);
             }
+            if (first != null && (starting || wantShade)) f.bg = (Integer) shade.invoke(first);
             // El icono solo cuando ya se sabe cuál es (al cerrar, al soltar el dedo).
             if (wantIcon && first != null) f.iconDrawable = copy(drawableOf(first));
         }

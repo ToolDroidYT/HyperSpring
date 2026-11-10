@@ -6,3 +6,9 @@ This product includes code ported from AndroidLiquidGlass
 licensed under the Apache License, Version 2.0: the rounded-rectangle
 refraction lens (circleMap displacement along the SDF gradient) and its
 7-tap chromatic dispersion, used in cc/GlassShader.java and GlassBar.java.
+
+Parts of the recents cleanup in RecentsCurtain.java (removing the effect from
+task cards that are hidden or recycled, and fading it out instead of cutting
+it) are based on changes in the community fork by ToolDroidYT
+(https://github.com/ToolDroidYT/hyperspring), licensed under the Apache
+License, Version 2.0.

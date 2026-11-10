@@ -6,7 +6,7 @@ Ideas planned for upcoming versions. Nothing here is implemented yet, and plans 
 - [ ] **Review what HyperCeiler, Kashi's HyperOS Launcher Mod and similar modules already offer**, so HyperSpring doesn't duplicate their features.
 
 ## Known bugs
-- [ ] **Control center glass stops working after a while.** The liquid glass and shader effects in the control center disappear after some time of use. Still to investigate: does it happen after the screen turns off, after a while in the background, or after opening certain apps? Possible causes: the control center plugin (`miui.systemui.plugin`) being reloaded with a new class loader that the hooks don't reach, or the system discarding the shader to free memory.
+- None open right now. If you find one, please open an issue with the log (**About → Copy log**).
 
 ## Animations
 - [ ] **Global elastic bounce**
@@ -14,7 +14,7 @@ Ideas planned for upcoming versions. Nothing here is implemented yet, and plans 
   - Folders bounce when they open. Today this only works with Kashi's launcher; the goal is to support the stock launcher too.
   - One shared "spring" setting (stiffness and damping) for every effect.
   - *Note:* bringing the bounce to lists in **every** app means hooking the system framework and adding more scopes in LSPosed. It may stay limited to the launcher and System UI.
-- [ ] **More recents styles, with an on/off switch**
+- [ ] **More recents styles, with an on/off switch** *(1.0.2: cards now only bend when moved with the finger)*
   - Community feedback is split: some find the card bending odd, others love it (and it works with button navigation too). It stays, but becomes easy to turn off or swap for another style.
   - Possible styles: fan, 3D stack, and a simple slide (scale and blur).
 - [ ] **Cascade on unlock:** home screen icons ripple in from the center or from where you touched.
@@ -30,4 +30,6 @@ Ideas planned for upcoming versions. Nothing here is implemented yet, and plans 
 - [ ] **Performance mode:** detect weaker GPUs and lower shader quality automatically.
 
 ## Done
+- [x] 1.0.3: smoother genie that looks closer to stock HyperOS (threads on every core, drawing on every refresh with prediction, the app's own colour when opening, landing in the icon like MIUI). Details in the CHANGELOG.
+- [x] 1.0.2: the control center glass stopped working after a while. Confirmed on the test phone.
 - [x] 1.0.0: the APK was built with targetSdk 30, so Android 16 refused to install it. Fixed (now targetSdk 35).

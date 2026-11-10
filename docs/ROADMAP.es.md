@@ -6,7 +6,7 @@ Ideas previstas para las próximas versiones. Nada de esto está implementado to
 - [ ] **Revisar qué incluyen ya HyperCeiler, el HyperOS Launcher Mod de Kashi y otros módulos parecidos** para no duplicar funciones.
 
 ## Errores conocidos
-- [ ] **El cristal del centro de control deja de funcionar al cabo de un rato.** El liquid glass y los efectos del shader desaparecen tras un tiempo de uso. Falta averiguar: ¿pasa al apagar la pantalla, tras un rato en segundo plano o al abrir ciertas apps? Posibles causas: que el sistema recargue el plugin del centro de control (`miui.systemui.plugin`) con un cargador de clases nuevo al que no llegan los ganchos, o que libere el shader para ahorrar memoria.
+- Ninguno abierto ahora mismo. Si encuentras uno, abre un issue con el registro (**Acerca de → Copiar registro**).
 
 ## Animaciones
 - [ ] **Rebote elástico global**
@@ -14,7 +14,7 @@ Ideas previstas para las próximas versiones. Nada de esto está implementado to
   - Las carpetas rebotan al abrirse. Ojo: ahora solo funciona con el launcher de Kashi y debería funcionar también con el de serie.
   - Un único ajuste de "muelle" (rigidez y amortiguación) compartido por todos los efectos.
   - Ojo: para que el rebote llegue a las listas de *todas* las apps hay que engancharse al framework (`EdgeEffect`) y ampliar los ámbitos en LSPosed. Valorar si se limita al launcher y a la interfaz del sistema.
-- [ ] **Recientes con varios estilos y un interruptor para apagarlo**
+- [ ] **Recientes con varios estilos y un interruptor para apagarlo** *(1.0.2: las tarjetas ya solo se doblan al moverlas con el dedo)*
   - Los comentarios están divididos: a algunos el doblado les parece raro y a otros les encanta (y funciona también con navegación por botones). Se queda, pero será fácil apagarlo o cambiarlo por otro estilo.
   - Estilos posibles: abanico, pila 3D y deslizamiento simple (escala y desenfoque).
 - [ ] **Entrada en cascada al desbloquear:** los iconos entran en onda desde el centro o desde el punto tocado.
@@ -30,4 +30,6 @@ Ideas previstas para las próximas versiones. Nada de esto está implementado to
 - [ ] **Modo rendimiento:** detectar GPUs débiles y bajar la calidad de los shaders automáticamente.
 
 ## Hecho
+- [x] 1.0.3: genio más fluido y más parecido a la animación de serie de HyperOS (hilos en todos los núcleos, dibujo en cada refresco con predicción, color de la app al abrir, aterrizaje en el icono como MIUI). Detalles en el CHANGELOG.
+- [x] 1.0.2: el cristal del centro de control dejaba de funcionar al cabo de un rato. Confirmado en el móvil de pruebas.
 - [x] 1.0.0: el APK se compilaba con targetSdk 30 y Android 16 no dejaba instalarlo. Arreglado en `local-build/build.sh` (ahora targetSdk 35).

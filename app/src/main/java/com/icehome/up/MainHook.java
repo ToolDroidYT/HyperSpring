@@ -25,6 +25,15 @@ public class MainHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
+        String pkg = lpparam.packageName;
+        if ("com.android.systemui".equals(pkg) || "miui.systemui.plugin".equals(pkg) || "com.miui.home".equals(pkg)) {
+            // Aún no hay animaciones: el hilo semilla nace con todas las CPU (ver Threads).
+            try {
+                Threads.init();
+            } catch (Throwable t) {
+                XposedBridge.log(t);
+            }
+        }
         if ("com.android.systemui".equals(lpparam.packageName)) {
             systemUi(lpparam);
             return;
@@ -69,6 +78,7 @@ public class MainHook implements IXposedHookLoadPackage {
             try {
                 WindowAnim.install(cl);
                 Genie.enabled = true;
+                Genie.startThreads();
             } catch (Throwable t) {
                 Log.e("no se pudo instalar el genio (¿otra versión del launcher?)", t);
             }

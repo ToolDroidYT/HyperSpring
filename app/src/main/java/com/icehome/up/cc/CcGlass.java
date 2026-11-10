@@ -124,8 +124,63 @@ public final class CcGlass {
 
     // ---------------------------------------------------------------- estado
     private static final Set<ClassLoader> PLUGIN = Collections.newSetFromMap(new WeakHashMap<ClassLoader, Boolean>());
-    private static final Map<View, Skin> SKINS = new WeakHashMap<>();
+    /**
+     * Pieza → su cristal. El cristal vive en el overlay de la vista; aquí solo se guarda una
+     * referencia débil, así las vistas que el sistema descarta (al reciclar o recargar el
+     * plugin) se liberan. Antes el mapa las retenía y, con el tiempo, crecía sin parar.
+     */
+    private static final SkinMap SKINS = new SkinMap();
+
+    private static final class SkinMap {
+        private final WeakHashMap<View, java.lang.ref.WeakReference<Skin>> m = new WeakHashMap<>();
+
+        Skin get(View v) {
+            java.lang.ref.WeakReference<Skin> r = m.get(v);
+            return r == null ? null : r.get();
+        }
+
+        void put(View v, Skin s) {
+            m.put(v, new java.lang.ref.WeakReference<>(s));
+        }
+
+        int size() {
+            return m.size();
+        }
+
+        java.util.List<Skin> values() {
+            java.util.List<Skin> out = new ArrayList<>(m.size());
+            for (java.lang.ref.WeakReference<Skin> r : m.values()) {
+                Skin s = r.get();
+                if (s != null) out.add(s);
+            }
+            return out;
+        }
+
+        java.util.List<Map.Entry<View, Skin>> entrySet() {
+            java.util.List<Map.Entry<View, Skin>> out = new ArrayList<>(m.size());
+            for (Map.Entry<View, java.lang.ref.WeakReference<Skin>> e : m.entrySet()) {
+                Skin s = e.getValue().get();
+                if (e.getKey() != null && s != null) out.add(new java.util.AbstractMap.SimpleEntry<>(e.getKey(), s));
+            }
+            return out;
+        }
+    }
     private static boolean shaderBroken, frameworkHooked, frameworkTried;
+    /**
+     * Fallos seguidos al dibujar con el shader o al capturar. Un fallo suelto (p. ej. una captura
+     * mientras hay una app protegida en pantalla) ya no apaga el cristal para siempre: solo tras
+     * varios seguidos. Un acierto pone el contador a cero.
+     */
+    private static int shaderFails, captureFails;
+    static final int SHADER_FAILS_MAX = 5, CAPTURE_FAILS_MAX = 3;
+
+    private static void shaderFailed(String what, Throwable t) {
+        once(what, t);
+        if (++shaderFails >= SHADER_FAILS_MAX && !shaderBroken) {
+            shaderBroken = true;
+            note("KashiPlus CC: shader desactivado tras " + SHADER_FAILS_MAX + " fallos seguidos (" + what + ")");
+        }
+    }
 
     // Motor nativo de HyperOS 4
     private static Method setMaterial, setGlass;
@@ -464,11 +519,26 @@ public final class CcGlass {
             }
         };
         WALKS.put(root, walk);
-        root.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+        final ViewTreeObserver.OnGlobalLayoutListener onLayout = new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
             public void onGlobalLayout() {
                 root.removeCallbacks(walk);
                 root.postDelayed(walk, 120);
+            }
+        };
+        root.getViewTreeObserver().addOnGlobalLayoutListener(onLayout);
+        // Si el sistema quita la ventana y la vuelve a poner, su ViewTreeObserver es otro: sin
+        // volver a registrarse, las piezas nuevas se quedaban sin cristal "al cabo de un rato".
+        root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                v.getViewTreeObserver().removeOnGlobalLayoutListener(onLayout);
+                v.getViewTreeObserver().addOnGlobalLayoutListener(onLayout);
+                root.postDelayed(walk, 120);
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
             }
         });
         root.postDelayed(walk, 120);
@@ -705,8 +775,19 @@ public final class CcGlass {
     private static Bitmap backdrop;
     private static float backdropScale = 1f;         // px de captura por px de pantalla
     private static Handler worker;
-    private static boolean captureBroken;
+    private static boolean captureBroken, captureInFlight;
+    /** Ventana con un reintento de captura pendiente (solo hilo principal). */
+    private static View retryView;
     private static long lastCapture;
+    /** Ventana (vista raíz) para la que se hizo la captura actual. */
+    private static java.lang.ref.WeakReference<View> backdropRoot;
+    /**
+     * Otras ventanas del plugin con piezas de cristal (la barra de volumen): su captura se
+     * rehace cada vez que la ventana aparece, porque lo que tiene detrás cambia. Mientras no la
+     * hay, esas piezas usan el desenfoque de MIUI en vez de una captura vieja de otra pantalla.
+     */
+    private static final Map<View, Boolean> WINDOW_WATCHED = new WeakHashMap<>();
+    private static final Set<View> WINDOW_STALE = Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
 
     /**
      * Desenfoque del fondo: HyperOS 3 lo aplica muy fuerte y oscuro. Se escala el valor que el
@@ -827,15 +908,36 @@ public final class CcGlass {
     private static void capture(final View cc) {
         if (captureBroken || cc == null || Build.VERSION.SDK_INT < 34) return;
         long now = android.os.SystemClock.uptimeMillis();
-        if (now - lastCapture < 300) return;
+        if (captureInFlight && now - lastCapture > 2000) captureInFlight = false;   // nunca se queda bloqueada
+        if (captureInFlight || now - lastCapture < 300) {
+            // Demasiado pronto: un único reintento pendiente (se pide en cada dibujo y no deben
+            // acumularse), en cuanto se pueda, en vez de quedarse sin captura.
+            if (retryView == null) {
+                retryView = cc;
+                // En el hilo principal, no en la vista: si la vista se quita antes, su cola se
+                // congela hasta que vuelva y no habría más reintentos para nadie.
+                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        View v = retryView;
+                        retryView = null;
+                        if (v != null && v.isAttachedToWindow()) capture(v);
+                    }
+                }, Math.max(60, 300 - (now - lastCapture)));
+            } else {
+                retryView = cc;                    // el último que la pidió
+            }
+            return;
+        }
         lastCapture = now;
+        captureInFlight = true;
+        final View window = cc.getRootView();
         final SurfaceControl own = surfaceOf(cc);
         final int display = cc.getDisplay() != null ? cc.getDisplay().getDisplayId() : 0;
         final android.util.DisplayMetrics dm = cc.getResources().getDisplayMetrics();
         if (worker == null) {
-            HandlerThread ht = new HandlerThread("KashiPlusGlass");
-            ht.start();
-            worker = new Handler(ht.getLooper());
+            // Desde la semilla: con todas las CPU (ver com.icehome.up.Threads).
+            worker = com.icehome.up.Threads.start("KashiPlusGlass", android.os.Process.THREAD_PRIORITY_DEFAULT);
         }
         worker.post(new Runnable() {
             @Override
@@ -843,14 +945,20 @@ public final class CcGlass {
                 try {
                     final float frame = 0.25f;
                     Bitmap shot = screenshot(display, own, frame);
-                    if (shot == null) return;
+                    if (shot == null) {
+                        captureDone();
+                        return;
+                    }
                     lastShot = shot;
                     lastDensity = dm.density;
                     float pxPerSample = SAMPLE_DP * dm.density;
                     Tune.load(cc.getContext());
                     float blurDp = Tune.ccBlur;
                     final Bitmap small = GlassShader.shrinkBlur(shot, 1f / frame, pxPerSample, blurDp * dm.density);
-                    if (small == null) return;
+                    if (small == null) {
+                        captureDone();
+                        return;
+                    }
                     final float scale = 1f / pxPerSample;
                     float bgPx = BG_SAMPLE_DP * dm.density;
                     final Bitmap soft = VIBRANT_BACKGROUND
@@ -864,6 +972,10 @@ public final class CcGlass {
                             }
                             backdrop = small;
                             backdropScale = scale;
+                            backdropRoot = new java.lang.ref.WeakReference<>(window);
+                            WINDOW_STALE.remove(window);
+                            captureFails = 0;
+                            captureInFlight = false;
                             bgSoft = soft;
                             bgSoftScale = softScale;
                             for (Skin s : SKINS.values()) s.backdropChanged();
@@ -872,9 +984,65 @@ public final class CcGlass {
                         }
                     });
                 } catch (Throwable t) {
-                    captureBroken = true;
                     once("capture", t);
+                    if (++captureFails >= CAPTURE_FAILS_MAX) {
+                        captureBroken = true;
+                        note("KashiPlus CC: captura desactivada tras " + CAPTURE_FAILS_MAX + " fallos seguidos");
+                    }
+                    captureDone();
                 }
+            }
+        });
+    }
+
+    /** Fin de una captura que no llegó a usarse (en el hilo principal). */
+    private static void captureDone() {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                captureInFlight = false;
+            }
+        });
+    }
+
+    /** Raíz de la ventana del centro de control (o null si aún no se ha abierto). */
+    private static View ccWindow() {
+        View r = ccRoot != null ? ccRoot.get() : null;
+        return r != null ? r.getRootView() : null;
+    }
+
+    /**
+     * ¿Vale la captura actual para las piezas de esta ventana? La del centro de control se
+     * captura al abrirse (hookOpen). Las demás ventanas del plugin (volumen) piden la suya al
+     * aparecer y, hasta tenerla, no usan la de otra pantalla.
+     */
+    private static boolean backdropFits(View host) {
+        View root = host.getRootView();
+        if (root == null) return false;
+        if (root == ccWindow()) return true;
+        watchWindow(root);
+        View br = backdropRoot != null ? backdropRoot.get() : null;
+        if (br == root && !WINDOW_STALE.contains(root)) return true;
+        capture(root);
+        return false;
+    }
+
+    /** Marca la ventana como pendiente de captura cada vez que se vuelve a mostrar. */
+    private static void watchWindow(final View root) {
+        if (WINDOW_WATCHED.containsKey(root)) return;
+        WINDOW_WATCHED.put(root, Boolean.TRUE);
+        WINDOW_STALE.add(root);
+        root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                WINDOW_STALE.add(v);
+                for (Skin s : SKINS.values()) if (s.host.getRootView() == v) s.syncMiBlur();
+                capture(v);
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                WINDOW_STALE.add(v);
             }
         });
     }
@@ -895,17 +1063,22 @@ public final class CcGlass {
     /** Ajustes cambiados desde la app: se releen y se aplican al momento (sin reiniciar). */
     public static void retune(final android.content.Context ctx) {
         if (worker == null) {
-            HandlerThread ht = new HandlerThread("KashiPlusGlass");
-            ht.start();
-            worker = new Handler(ht.getLooper());
+            // Desde la semilla: con todas las CPU (ver com.icehome.up.Threads).
+            worker = com.icehome.up.Threads.start("KashiPlusGlass", android.os.Process.THREAD_PRIORITY_DEFAULT);
         }
         worker.post(new Runnable() {
             @Override
             public void run() {
-                Tune.load(ctx);
-                Bitmap shot = lastShot;
-                final Bitmap small = shot == null ? null
-                        : GlassShader.shrinkBlur(shot, 4f, SAMPLE_DP * lastDensity, Tune.ccBlur * lastDensity);
+                Bitmap small0 = null;
+                try {
+                    Tune.load(ctx);
+                    Bitmap shot = lastShot;
+                    small0 = shot == null ? null
+                            : GlassShader.shrinkBlur(shot, 4f, SAMPLE_DP * lastDensity, Tune.ccBlur * lastDensity);
+                } catch (Throwable t) {
+                    once("retune", t);           // la captura anterior pudo liberarse: se usa la que hay
+                }
+                final Bitmap small = small0;
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
@@ -1128,6 +1301,7 @@ public final class CcGlass {
         void syncMiBlur() {
             if (!FULL_GLASS || !CLEAR_MIUI_BLEND) return;
             boolean want = Tune.ccOn && backdrop != null && on && eligible && !suppressed
+                    && (!host.isAttachedToWindow() || backdropFits(host))
                     && (currentActive() < 0.5f || solidContent)
                     && Build.VERSION.SDK_INT >= 33 && !shaderBroken;
             if (want && !miCleared) {
@@ -1190,7 +1364,7 @@ public final class CcGlass {
         /** Si la pieza se mueve (apertura, desplazamiento, pulsación) cambia lo que tiene detrás. */
         private void track() {
             tracking = true;
-            host.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            final ViewTreeObserver.OnPreDrawListener pre = new ViewTreeObserver.OnPreDrawListener() {
                 @Override
                 public boolean onPreDraw() {
                     if (backdrop == null || !on || !eligible || !host.isAttachedToWindow()) return true;
@@ -1201,6 +1375,22 @@ public final class CcGlass {
                         if (underDrawn) host.invalidate();
                     }
                     return true;
+                }
+            };
+            host.getViewTreeObserver().addOnPreDrawListener(pre);
+            // Al volver a una ventana nueva el observador cambia: se vuelve a registrar.
+            host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                    v.getViewTreeObserver().removeOnPreDrawListener(pre);
+                    v.getViewTreeObserver().addOnPreDrawListener(pre);
+                    w = -1;
+                    layout();
+                    invalidateSelf();
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
                 }
             });
         }
@@ -1349,6 +1539,11 @@ public final class CcGlass {
                         : shaderBroken ? "shader-roto" : !c.isHardwareAccelerated() ? "sin-gpu" : "?";
                 return;
             }
+            if (!backdropFits(host)) {
+                why = "esperando-captura";
+                syncMiBlur();
+                return;
+            }
             float scaleB = backdropScale;
             float act = currentActive();
             if (act >= 0.5f) {
@@ -1411,10 +1606,10 @@ public final class CcGlass {
                 c.drawRect(0, 0, w, h, underPaint);
                 c.restoreToCount(save);
                 underDrawn = true;
+                shaderFails = 0;
                 if (!tracking) track();
             } catch (Throwable t) {
-                shaderBroken = true;
-                once("under", t);
+                shaderFailed("under", t);
             }
         }
 
@@ -1437,10 +1632,10 @@ public final class CcGlass {
                     : Math.round(SHEEN_OFF * off + SHEEN_ON * act));
             c.drawPath(shape, sheen);
             boolean lensDrawn = false;
-            if (shader != null) {
+            if (shader != null && !shaderBroken) {
                 try {
                     RuntimeShader rs = (RuntimeShader) shader;
-                    if (c.isHardwareAccelerated()) bindBackdrop(rs);
+                    if (c.isHardwareAccelerated() && backdropFits(host)) bindBackdrop(rs);
                     else rs.setFloatUniform("hasWall", 0f);
                     rs.setFloatUniform("active", act);
                     // Sobre un relleno sólido (pieza encendida) no se ve lo de detrás: solo el canto.
@@ -1449,9 +1644,7 @@ public final class CcGlass {
                     c.drawRect(0, 0, w, h, lens);
                     lensDrawn = true;
                 } catch (Throwable t) {
-                    shaderBroken = true;
-                    shader = null;
-                    once("draw", t);
+                    shaderFailed("draw", t);
                 }
             } else {
                 float in = band * 0.25f;
