@@ -19,10 +19,9 @@ javac -nowarn -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -d "$OUT/stub" \
 
 # 2) Código del módulo
 # Comprobar los shaders AGSL antes de compilar (si hay skia-python)
-if python3 -c "import skia" 2>/dev/null && [ -f "$TOOLS/agsl_check.py" ]; then
+if python3 -c "import skia" 2>/dev/null && [ -f "local-build/agsl_check.py" ]; then
   for f in $(grep -rl "half4 main" app/src/main/java/com/icehome/up); do
-    python3 "$TOOLS/agsl_check.py" "$f" | head -1 || { echo "ERROR: shader AGSL en $f"; exit 1; }
-    python3 "$TOOLS/agsl_check.py" "$f" > /dev/null || { echo "ERROR: shader AGSL en $f"; exit 1; }
+    python3 local-build/agsl_check.py "$f" || { echo "ERROR: shader AGSL en $f"; exit 1; }
   done
 fi
 if ! javac -nowarn -encoding UTF-8 -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -cp "$OUT/stub" \
