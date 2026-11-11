@@ -224,7 +224,7 @@ final class TelonRenderer {
     private static void setNonBlockingSwapInterval() {
         if (!EGL14.eglSwapInterval(display, 0)) {
             int error = EGL14.eglGetError();
-            if (error == 0x300E) throw new EglFailure("eglSwapInterval", error);
+            if (isEglContextLostError(error)) throw new EglFailure("eglSwapInterval", error);
             // Some drivers require their default interval; this is a pacing hint, not a requirement.
         }
     }
@@ -242,9 +242,16 @@ final class TelonRenderer {
         }
     }
 
+    private static boolean isEglContextLostError(int error) {
+        return error == 0x300E  // EGL_CONTEXT_LOST
+                || error == 0x3006  // EGL_BAD_CONTEXT
+                || error == 0x3001  // EGL_NOT_INITIALIZED
+                || error == 0x3008; // EGL_BAD_DISPLAY
+    }
+
     private static boolean isContextLost(Throwable error) {
         return error instanceof GlContextLost
-                || (error instanceof EglFailure && ((EglFailure) error).error == 0x300E);
+                || (error instanceof EglFailure && isEglContextLostError(((EglFailure) error).error));
     }
 
     private static void recover(Throwable error) {
@@ -641,12 +648,6 @@ final class TelonRenderer {
         } catch (Throwable e) {
             Log.e("no se pudo desenfocar la de debajo", e);
             recover(e);
-            if (!isContextLost(e)) {
-                try {
-                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-                } catch (Throwable ignored) {
-                }
-            }
             return false;
         }
     }
@@ -786,7 +787,7 @@ final class TelonRenderer {
             try {
                 if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
-                    contextLost = EGL14.eglGetError() == 0x300E;
+                    contextLost = isEglContextLostError(EGL14.eglGetError());
                 }
             } catch (Throwable ignored) {
             }
@@ -794,7 +795,7 @@ final class TelonRenderer {
         if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
             try {
                 if (!EGL14.eglDestroySurface(display, oldWindow)) {
-                    contextLost |= EGL14.eglGetError() == 0x300E;
+                    contextLost |= isEglContextLostError(EGL14.eglGetError());
                 }
             } catch (Throwable ignored) {}
         }
