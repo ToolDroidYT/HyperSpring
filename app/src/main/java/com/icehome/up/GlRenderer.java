@@ -241,6 +241,14 @@ final class GlRenderer {
         if (!success) throw new EglFailure(operation, EGL14.eglGetError());
     }
 
+    private static void setNonBlockingSwapInterval() {
+        if (!EGL14.eglSwapInterval(display, 0)) {
+            int error = EGL14.eglGetError();
+            if (error == 0x300E) throw new EglFailure("eglSwapInterval", error);
+            // Some drivers require their default interval; this is a pacing hint, not a requirement.
+        }
+    }
+
     private static void checkGlError(String operation) {
         int firstError = GLES20.GL_NO_ERROR;
         for (int i = 0; i < 8; i++) {
@@ -395,7 +403,7 @@ final class GlRenderer {
             window = EGL14.eglCreateWindowSurface(display, config, output, new int[]{EGL14.EGL_NONE}, 0);
             if (window == EGL14.EGL_NO_SURFACE) throw new EglFailure("eglCreateWindowSurface", EGL14.eglGetError());
             makeCurrent();
-            checkEgl(EGL14.eglSwapInterval(display, 0), "eglSwapInterval");
+            setNonBlockingSwapInterval();
             scale = sc0;
             width = w;
             height = h;
@@ -436,6 +444,7 @@ final class GlRenderer {
             int[] version = new int[2];
             checkEgl(EGL14.eglInitialize(display, version, 0, version, 1), "eglInitialize");
             displayInitialized = true;
+            checkEgl(EGL14.eglBindAPI(EGL14.EGL_OPENGL_ES_API), "eglBindAPI(OpenGL ES)");
 
             EGLConfig[] configs = new EGLConfig[1];
             int[] count = new int[1];
