@@ -214,7 +214,7 @@ final class GlRenderer {
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
     private static volatile long contextGeneration = 1L;
-    private static Thread glThread;
+    private static volatile Thread glThread;
 
     private static void assertGlThread() {
         Thread current = Thread.currentThread();
@@ -526,6 +526,7 @@ final class GlRenderer {
 
     /** Hilo de dibujo: pasa la última captura a la textura principal. Devuelve de quién era, o null. */
     static Object consume() {
+        assertGlThread();
         synchronized (queueLock) {
             if (!queued || main == null || main.input == null) {
                 queued = false;
@@ -553,6 +554,7 @@ final class GlRenderer {
      * captura de {@code owner}, si había una en espera) y las capturas van a uno nuevo.
      */
     static Content detach(Object owner) {
+        assertGlThread();
         synchronized (queueLock) {
             Content old = main;
             if (old == null || window == EGL14.EGL_NO_SURFACE) return null;
@@ -578,6 +580,7 @@ final class GlRenderer {
 
     /** Icono de la app (cuadrado, potencia de 2): el genio sale de él y vuelve a él. */
     static void uploadIcon(Bitmap b, Object owner) {
+        assertGlThread();
         makeCurrent();
         Content c = main;
         if (c == null || c.generation != contextGeneration || c.iconTexture == 0) {
@@ -617,6 +620,7 @@ final class GlRenderer {
 
     /** Hilo de dibujo: libera el contenido de un genio que ya terminó. */
     static void release(Content c) {
+        assertGlThread();
         if (c == null || c == main) return;
         boolean deleteTextures = false;
         if (c.generation == contextGeneration && context != EGL14.EGL_NO_CONTEXT
@@ -641,6 +645,7 @@ final class GlRenderer {
     /** Empieza un fotograma: búfer limpio y transparente. Luego {@link #drawGenie} y {@link #endFrame}. */
     /** @param dim oscurecido del escritorio detrás (negro premultiplicado; 0 = transparente). */
     static boolean beginFrame(float dim) {
+        assertGlThread();
         try {
             makeCurrent();
             GLES20.glViewport(0, 0, width, height);
@@ -665,6 +670,7 @@ final class GlRenderer {
      * @param bg         color de la app (ARGB)
      */
     static boolean drawGenie(Content c, boolean fromWindow, Geo g, float fullHalf, float fullH, int bg) {
+        assertGlThread();
         try {
             if (c == null || c.generation != contextGeneration || context == EGL14.EGL_NO_CONTEXT) return false;
             Program p = programs[fromWindow ? 0 : 1];
@@ -710,6 +716,7 @@ final class GlRenderer {
 
     /** Termina el fotograma y lo manda al compositor. */
     static boolean endFrame() {
+        assertGlThread();
         try {
             checkGlError("end genie frame");
             checkEgl(EGL14.eglSwapBuffers(display, window), "eglSwapBuffers");
@@ -727,6 +734,7 @@ final class GlRenderer {
 
     /** Compila los programas y dibuja una vez con cada uno, sin que se vea (la capa está oculta). */
     static void warm(SurfaceControl root, int screenW, int screenH) {
+        assertGlThread();
         long t0 = android.os.SystemClock.uptimeMillis();
         SurfaceControl before = layer;
         if (!ensure(root, screenW, screenH) || (layer == before && warmed)) return;
@@ -810,7 +818,7 @@ final class GlRenderer {
             queuedOwner = null;
         }
 
-        if (display != EGL14.EGL_NO_DISPLAY) {
+        if (display != EGL14.EGL_NO_DISPLAY && displayInitialized) {
             try {
                 EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
@@ -819,9 +827,7 @@ final class GlRenderer {
             if (context != EGL14.EGL_NO_CONTEXT) {
                 try { EGL14.eglDestroyContext(display, context); } catch (Throwable ignored) {}
             }
-            if (displayInitialized) {
-                try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
-            }
+            try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
         }
 
         context = EGL14.EGL_NO_CONTEXT;
