@@ -1162,7 +1162,11 @@ public class SettingsActivity extends Activity {
             public void run() {
                 // Se cierra el proceso viejo (por su pid) y el sistema lo vuelve a abrir solo.
                 String pkg = systemUi ? "com.android.systemui" : LauncherAdapters.resolvePackage(SettingsActivity.this);
-                String cmd = "p=$(pidof " + pkg + "); "
+                String cmd = (systemUi
+                        ? "settings put global hyperspring_sysui_intentional_restart_at "
+                                + System.currentTimeMillis() + " >/dev/null 2>&1; "
+                        : "")
+                        + "p=$(pidof " + pkg + "); "
                         + (systemUi ? "" : "am force-stop " + pkg + " >/dev/null 2>&1; sleep 0.3; ")
                         + "[ -n \"$p\" ] && kill -9 $p 2>/dev/null; echo hecho";
                 final String[] out = {""};

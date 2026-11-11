@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Binder;
+import android.os.Process;
 
 import java.util.Map;
 
@@ -24,6 +26,17 @@ public class PrefsProvider extends ContentProvider {
     public static final String PREFS = "tune";
     private static final String LOG_FILE = "registro.txt";
     private static final int LOG_KEEP = 120;
+    private static final String[] READERS = {
+            "com.miui.home",
+            "com.mi.android.globallauncher",
+            "com.android.systemui",
+            "miui.systemui.plugin"
+    };
+    private static final String[] WRITERS = {
+            "com.miui.home",
+            "com.mi.android.globallauncher",
+            "com.android.systemui"
+    };
     private final java.util.ArrayDeque<String> log = new java.util.ArrayDeque<>();
     private boolean logLoaded;
 
@@ -34,6 +47,8 @@ public class PrefsProvider extends ContentProvider {
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
+        enforceReadAccess();
+        if (uri == null) throw new IllegalArgumentException("uri == null");
         if ("state".equals(uri.getLastPathSegment())) {
             MatrixCursor c = new MatrixCursor(new String[]{"key", "value"});
             for (Map.Entry<String, ?> e : getContext().getSharedPreferences(STATE_PREFS, 0).getAll().entrySet()) {
@@ -49,10 +64,48 @@ public class PrefsProvider extends ContentProvider {
             }
             return c;
         }
+        if (!"tune".equals(uri.getLastPathSegment())) {
+            throw new IllegalArgumentException("Unknown path: " + uri.getLastPathSegment());
+        }
         MatrixCursor c = new MatrixCursor(new String[]{"key", "value"});
         SharedPreferences p = getContext().getSharedPreferences(PREFS, 0);
         for (Map.Entry<String, ?> e : p.getAll().entrySet()) c.addRow(new Object[]{e.getKey(), String.valueOf(e.getValue())});
         return c;
+    }
+
+    private static boolean isLauncher(String packageName) {
+        return "com.miui.home".equals(packageName)
+                || "com.mi.android.globallauncher".equals(packageName);
+    }
+
+    private void enforceReadAccess() {
+        if (Binder.getCallingUid() == Process.myUid() || verifiedCaller(READERS) != null) return;
+        throw new SecurityException("Caller is not allowed to read HyperSpring provider data");
+    }
+
+    /**
+     * ContentProvider caller package metadata is useful only when it matches the actual Binder UID.
+     * This prevents another app from claiming an allow-listed package name.
+     */
+    private String verifiedCaller(String... allowedPackages) {
+        final String caller;
+        try {
+            caller = getCallingPackage();
+        } catch (Throwable ignored) {
+            return null;
+        }
+        if (caller == null) return null;
+        for (String allowed : allowedPackages) {
+            if (!allowed.equals(caller)) continue;
+            try {
+                if (getContext().getPackageManager().getPackageUid(caller, 0) == Binder.getCallingUid()) {
+                    return caller;
+                }
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -62,10 +115,11 @@ public class PrefsProvider extends ContentProvider {
 
     @Override
     public Uri insert(Uri uri, ContentValues v) {
-        // Solo el launcher y la interfaz del sistema escriben en el registro.
-        String from = getCallingPackage();
-        boolean launcher = "com.miui.home".equals(from) || "com.mi.android.globallauncher".equals(from), sysui = "com.android.systemui".equals(from);
-        if (v == null || !(launcher || sysui)) return null;
+        // Validate both the claimed package and its UID. getCallingPackage() alone is not an ACL.
+        if (v == null || uri == null) return null;
+        String from = verifiedCaller(WRITERS);
+        if (from == null) return null;
+        boolean launcher = isLauncher(from);
         if ("state".equals(uri.getLastPathSegment())) {
             String k = v.getAsString("key"), val = v.getAsString("value");
             if (k == null || k.length() > 64) return null;
@@ -87,7 +141,11 @@ public class PrefsProvider extends ContentProvider {
 
     @Override
     public int delete(Uri uri, String s, String[] a) {
-        if (!"log".equals(uri.getLastPathSegment())) return 0;
+        // Clearing diagnostic logs is an app-only operation.
+        if (Binder.getCallingUid() != Process.myUid()) {
+            throw new SecurityException("Only HyperSpring can clear its diagnostic log");
+        }
+        if (uri == null || !"log".equals(uri.getLastPathSegment())) return 0;
         synchronized (log) {
             int n = log.size();
             log.clear();

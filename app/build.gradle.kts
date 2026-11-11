@@ -2,6 +2,13 @@ plugins {
     id("com.android.application")
 }
 
+// Keep Gradle and local-build output versions in sync with the module runtime metadata.
+val moduleVersion = file("src/main/java/com/icehome/up/Version.java").readText()
+val moduleVersionName = Regex("""NAME = "([^"]+)"""").find(moduleVersion)?.groupValues?.get(1)
+    ?: error("Could not read Version.NAME")
+val moduleVersionCode = Regex("""CODE = ([0-9]+)""").find(moduleVersion)?.groupValues?.get(1)?.toInt()
+    ?: error("Could not read Version.CODE")
+
 android {
     namespace = "com.icehome.up"
     compileSdk = 35
@@ -10,8 +17,8 @@ android {
         applicationId = "com.icehome.up"
         minSdk = 30
         targetSdk = 35
-        versionCode = 52
-        versionName = "1.0.8-poco"
+        versionCode = moduleVersionCode
+        versionName = moduleVersionName
     }
 
     buildTypes {
