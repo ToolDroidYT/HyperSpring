@@ -194,6 +194,15 @@ final class TelonRenderer {
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
+    private static Thread glThread;
+
+    private static void assertGlThread() {
+        Thread current = Thread.currentThread();
+        if (glThread == null) glThread = current;
+        else if (glThread != current) {
+            throw new IllegalStateException("TelonRenderer EGL context accessed from a non-render thread");
+        }
+    }
 
     private static final class EglFailure extends RuntimeException {
         final int error;
@@ -231,8 +240,11 @@ final class TelonRenderer {
     }
 
     private static void recover(Throwable error) {
-        if (isContextLost(error)) destroyEglContext();
-        else releaseLayer();
+        if (isContextLost(error)) {
+            destroyEglContext();
+        } else if (releaseLayer()) {
+            destroyEglContext();
+        }
     }
     private static int program, aRow, uM, uWin, uBend, uPower, uMargin, uScale, uBuf, uTexM, uRadius, uAlpha, uAa, uContent, uBlur;
     /** Una entrada de capturas: textura externa alimentada sin copias por una SurfaceTexture. */
@@ -290,6 +302,7 @@ final class TelonRenderer {
 
     /** Capa y contexto para una pantalla de w × h (se reutilizan entre transiciones). */
     static boolean ensure(SurfaceControl root, int w, int h) {
+        assertGlThread();
         if (root == null || !root.isValid() || w <= 0 || h <= 0) return false;
         float s = Math.max(0.3f, Math.min(1f, scale));
         int bw = Math.round(w * s), bh = Math.round(h * s);
@@ -297,7 +310,7 @@ final class TelonRenderer {
                 && Math.abs(s - layerScale) < 0.001f) {
             return true;
         }
-        releaseLayer();
+        if (releaseLayer()) destroyEglContext();
         try {
             initContext();
             SurfaceControl sc = new SurfaceControl.Builder()
@@ -336,6 +349,7 @@ final class TelonRenderer {
     }
 
     private static boolean initContext() {
+        assertGlThread();
         if (context != EGL14.EGL_NO_CONTEXT && displayInitialized) return true;
 
         EGLSurface pbuffer = EGL14.EGL_NO_SURFACE;
@@ -494,6 +508,7 @@ final class TelonRenderer {
     }
 
     private static void makeCurrent() {
+        assertGlThread();
         if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
                 || window == EGL14.EGL_NO_SURFACE) {
             throw new IllegalStateException("EGL renderer is not initialized");
@@ -745,18 +760,26 @@ final class TelonRenderer {
     }
 
     /** Releases the layer's EGL window surface but retains the reusable GL context. */
-    static void releaseLayer() {
+    static boolean releaseLayer() {
+        assertGlThread();
+        boolean contextLost = false;
         EGLSurface oldWindow = window;
         window = EGL14.EGL_NO_SURFACE;
         if (display != EGL14.EGL_NO_DISPLAY && context != EGL14.EGL_NO_CONTEXT) {
             try {
-                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
-                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
+                    contextLost = EGL14.eglGetError() == 0x300E;
+                }
             } catch (Throwable ignored) {
             }
         }
         if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
-            try { EGL14.eglDestroySurface(display, oldWindow); } catch (Throwable ignored) {}
+            try {
+                if (!EGL14.eglDestroySurface(display, oldWindow)) {
+                    contextLost |= EGL14.eglGetError() == 0x300E;
+                }
+            } catch (Throwable ignored) {}
         }
 
         Surface oldOutput = output;
@@ -778,10 +801,12 @@ final class TelonRenderer {
         }
         width = height = 0;
         layerScale = 0f;
+        return contextLost;
     }
 
     /** Context loss invalidates every program, texture, and framebuffer name. */
     private static void destroyEglContext() {
+        assertGlThread();
         releaseLayer();
 
         synchronized (queueLock) {
