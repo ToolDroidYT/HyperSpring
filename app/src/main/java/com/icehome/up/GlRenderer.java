@@ -214,6 +214,15 @@ final class GlRenderer {
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
     private static volatile long contextGeneration = 1L;
+    private static Thread glThread;
+
+    private static void assertGlThread() {
+        Thread current = Thread.currentThread();
+        if (glThread == null) glThread = current;
+        else if (glThread != current) {
+            throw new IllegalStateException("GlRenderer EGL context accessed from a non-render thread");
+        }
+    }
 
     private static final class EglFailure extends RuntimeException {
         final int error;
@@ -252,8 +261,11 @@ final class GlRenderer {
 
     /** Surface failures can be retried with the current context; context loss cannot. */
     private static void recover(Throwable error) {
-        if (isContextLost(error)) destroyEglContext();
-        else releaseLayer();
+        if (isContextLost(error)) {
+            destroyEglContext();
+        } else if (releaseLayer()) {
+            destroyEglContext();
+        }
     }
     /** [ventana, pantalla de inicio] */
     private static final Program[] programs = new Program[2];
@@ -350,6 +362,7 @@ final class GlRenderer {
      * está, no hace nada; rehacerla es lento y no debería pasar en mitad de una animación.
      */
     static boolean ensure(SurfaceControl root, int screenW, int screenH) {
+        assertGlThread();
         if (root == null || !root.isValid() || screenW <= 0 || screenH <= 0) return false;
         float sc0 = Math.max(0.5f, Math.min(1f, wantedScale));
         int w = Math.round(screenW * sc0), h = Math.round(screenH * sc0);
@@ -363,7 +376,7 @@ final class GlRenderer {
             w = Math.max(w, width);
             h = Math.max(h, height);
         }
-        releaseLayer();
+        if (releaseLayer()) destroyEglContext();
         try {
             initContext();
             SurfaceControl sc = new SurfaceControl.Builder()
@@ -412,6 +425,7 @@ final class GlRenderer {
     }
 
     private static boolean initContext() {
+        assertGlThread();
         if (context != EGL14.EGL_NO_CONTEXT && displayInitialized) return true;
 
         EGLSurface pbuffer = EGL14.EGL_NO_SURFACE;
@@ -481,6 +495,7 @@ final class GlRenderer {
     }
 
     private static void makeCurrent() {
+        assertGlThread();
         if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
                 || window == EGL14.EGL_NO_SURFACE) {
             throw new IllegalStateException("EGL renderer is not initialized");
@@ -548,6 +563,7 @@ final class GlRenderer {
                 return null;
             }
             if (queued && queuedOwner == owner) consume();
+            if (context == EGL14.EGL_NO_CONTEXT) return null;
             queued = false;
             queuedOwner = null;
             try {
@@ -737,18 +753,26 @@ final class GlRenderer {
     }
 
     /** Releases only the window surface/layer; shader and texture objects remain reusable. */
-    private static void releaseLayer() {
+    private static boolean releaseLayer() {
+        assertGlThread();
+        boolean contextLost = false;
         EGLSurface oldWindow = window;
         window = EGL14.EGL_NO_SURFACE;
         if (display != EGL14.EGL_NO_DISPLAY && context != EGL14.EGL_NO_CONTEXT) {
             try {
-                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
-                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
+                    contextLost = EGL14.eglGetError() == 0x300E;
+                }
             } catch (Throwable ignored) {
             }
         }
         if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
-            try { EGL14.eglDestroySurface(display, oldWindow); } catch (Throwable ignored) {}
+            try {
+                if (!EGL14.eglDestroySurface(display, oldWindow)) {
+                    contextLost |= EGL14.eglGetError() == 0x300E;
+                }
+            } catch (Throwable ignored) {}
         }
 
         Surface oldOutput = output;
@@ -770,10 +794,12 @@ final class GlRenderer {
         }
         width = height = 0;
         warmed = false;
+        return contextLost;
     }
 
     /** Full teardown is mandatory after EGL_CONTEXT_LOST: every GL name is now stale. */
     private static void destroyEglContext() {
+        assertGlThread();
         releaseLayer();
 
         Content oldMain;
