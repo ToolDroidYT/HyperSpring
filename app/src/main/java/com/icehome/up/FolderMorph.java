@@ -128,16 +128,16 @@ final class FolderMorph {
         Class<?> bl = XposedHelpers.findClassIfExists("com.miui.home.launcher.BaseLauncher", cl);
         try {
             if (conv != null) {
-                for (Method m : conv.getDeclaredMethods()) {
-                    if (m.getName().equals("convertFolderSize") && m.getParameterTypes().length == 2) {
+                for (Method m : XposedHelpers.declaredMethods(conv)) {
+                    if (m.getName().equals("convertFolderSize") && m.getParameterCount() == 2) {
                         XposedBridge.hookMethod(m, capture);
                         hooked++;
                     }
                 }
             }
             if (bl != null) {
-                for (Method m : bl.getDeclaredMethods()) {
-                    if (m.getName().equals("bindFolderResize") && m.getParameterTypes().length == 2) {
+                for (Method m : XposedHelpers.declaredMethods(bl)) {
+                    if (m.getName().equals("bindFolderResize") && m.getParameterCount() == 2) {
                         XposedBridge.hookMethod(m, capture);
                         hooked++;
                     }
@@ -152,10 +152,10 @@ final class FolderMorph {
         try {
             if (conv != null) Deopt.all(conv);
             if (bl != null) {
-                for (Method m : bl.getDeclaredMethods()) {
+                for (Method m : XposedHelpers.declaredMethods(bl)) {
                     String n = m.getName();
                     if (n.equals("bindFolderResize") || n.startsWith("lambda$bindFolderResize$")
-                            || (n.startsWith("$r8$lambda$") && m.getParameterTypes().length == 5)) {
+                            || (n.startsWith("$r8$lambda$") && m.getParameterCount() == 5)) {
                         Deopt.method(m);
                     }
                 }

@@ -5,7 +5,7 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
 ## Lo básico
 
 - **Paquete:** `com.icehome.up`. **No cambiarlo nunca**: así se actualiza encima de versiones anteriores y se conservan los ajustes.
-- **API de Xposed:** dos, con el mismo código (desde la 1.1.0-beta1):
+- **API de Xposed:** dos, con el mismo código (desde la 2.0.0):
   - **libxposed 102** (`io.github.libxposed.api`): entrada `ModernEntry`, apuntada en `app/src/main/resources/META-INF/xposed/` (`java_init.list`, `module.prop`, `scope.list`).
   - **Clásica 93** (`de.robv.android.xposed`): entrada `LegacyEntry`, apuntada en `app/src/main/assets/xposed_init`.
   - Las dos llaman a `MainHook.onPackage`. Los hooks **nunca** usan esas API directamente: pasan por la fachada `xp/` (`XposedBridge`, `XposedHelpers`, `XC_MethodHook` propios, con los nombres de siempre), que reenvía a `xp/ModernEngine` o `xp/LegacyEngine`. Un módulo cargado con la 102 no puede tocar `de.robv`.
@@ -30,6 +30,7 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
   - `I18n.java`: textos en español e inglés. Todo texto visible pasa por `I18n.t(es, en)`.
   - `Tune.java` / `telon/Tune.java` / `cc/Tune.java`: ajustes y sus valores por defecto. La tabla `ITEMS` es la fuente de verdad.
   - `PrefsProvider.java`: guarda los ajustes. `Remote.java`: avisos entre la app y los procesos enganchados.
+  - `Presets.java`: perfiles de un toque (solo tocan las claves de `Presets.KEYS`). `Backup.java`: exportar e importar ajustes en JSON. `Migrate.java`: importación única de los ajustes de la 1.0.x.
 - **Registro:** `Log.java` / `telon/Log.java`. Se ve en la app con **Acerca de → Copiar registro**. Es lo que piden los usuarios en los issues.
 
 ## Compilar
@@ -50,6 +51,7 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
 
 ## Cómo trabajar aquí
 
+- **Listar métodos de clases del launcher:** usa `XposedHelpers.declaredMethods(clase)` y `m.getParameterCount()`, no `clase.getDeclaredMethods()`: este falla entero si un solo método nombra una clase que no existe (pasa con `BaseLauncher` del launcher de Kashi).
 - **Cada función se instala por separado y en `try/catch`:** si un hook falla, se anota en el registro y lo demás sigue funcionando. Mantén ese patrón.
 - **Nunca bloquees ni lances excepciones en un hook de SystemUI o del launcher.** Un fallo repetido activa el modo seguro y apaga esa parte.
 - **Hilos:**
@@ -73,6 +75,6 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
 
 - **Hoja de ruta completa:** `docs/ROADMAP.md` y `docs/ROADMAP.es.md`.
 - **Recarga en caliente (libxposed 102):** siguiente paso. Hay que implementar `onHotReloading`/`onHotReloaded` en `ModernEntry`: parar los hilos del módulo, quitar listeners y receptores, y volver a instalar los hooks con el código nuevo (`replaceHook`). Ahora devuelve `false` (valor por defecto) y el framework no recarga.
-- **Error antiguo en el registro:** `NoClassDefFoundError ... NewHomeView` en `FolderMorph.install` (al listar los métodos de `BaseLauncher`). Ya salía en la 1.0.x; las carpetas funcionan, pero conviene mirarlo.
+- **Carpetas, pendiente de mirar con el usuario:** desde la 2.0.0 el hook de `BaseLauncher.bindFolderResize` sí se instala (antes fallaba al listar los métodos). No da errores en el registro, pero el redimensionado de carpetas con el dedo no se ha probado a mano.
 - **Confirmado en el móvil:** las correcciones de la 1.0.2 funcionan (volumen, centro de control, genio clásico, recientes).
 - **Navegación:** no está comprobado qué animación usa MIUI al volver al escritorio con el gesto o el botón de atrás en la última pantalla de una app. El registro anota cada tipo de animación que ve ("animación X por Y" y "sin genio en X"). Pide ese registro antes de añadir tipos nuevos en `WindowAnim.onFrame`.

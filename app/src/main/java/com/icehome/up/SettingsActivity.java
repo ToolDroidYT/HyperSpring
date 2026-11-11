@@ -391,6 +391,18 @@ public class SettingsActivity extends Activity {
         f.addView(toggleRow(Icons.SLIDERS, item(com.icehome.up.cc.Tune.ITEMS, "kashiplus_cc_on"), I18n.t("Cristal en el centro de control", "Glass control center")));
         c.addView(f);
 
+        c.addView(label(I18n.t("Perfiles", "Presets")));
+        LinearLayout pr = card();
+        for (final Object[] preset : Presets.ALL) {
+            pr.addView(navRow(Icons.SLIDERS, Presets.name(preset), Presets.about(preset), false, new Runnable() {
+                @Override
+                public void run() {
+                    confirmPreset(preset);
+                }
+            }));
+        }
+        c.addView(pr);
+
         c.addView(label(I18n.t("Acciones", "Actions")));
         LinearLayout a = card();
         a.addView(navRow(Icons.RESTART, I18n.t("Reiniciar launcher", "Restart launcher"),
@@ -540,6 +552,21 @@ public class SettingsActivity extends Activity {
                 recreate();
             }
         }));
+        r.addView(navRow(Icons.LIST, I18n.t("Exportar ajustes", "Export settings"),
+                I18n.t("Guarda todos los ajustes en un archivo. Adjúntalo si reportas un error.",
+                        "Saves every setting to a file. Attach it when you report a bug."), false, new Runnable() {
+            @Override
+            public void run() {
+                pickFile(true);
+            }
+        }));
+        r.addView(navRow(Icons.LIST, I18n.t("Importar ajustes", "Import settings"),
+                I18n.t("Sustituye los ajustes por los de un archivo exportado", "Replaces the settings with those from an exported file"), false, new Runnable() {
+            @Override
+            public void run() {
+                pickFile(false);
+            }
+        }));
         r.addView(navRow(Icons.RESTART, I18n.t("Restablecer todo", "Reset everything"),
                 I18n.t("Vuelve todos los ajustes a sus valores por defecto", "Puts every setting back to its default"), false, new Runnable() {
             @Override
@@ -598,16 +625,9 @@ public class SettingsActivity extends Activity {
         LinearLayout r = rowBase();
         r.setBackground(null);
         r.addView(icon(iconKind, text));
-        LinearLayout tc = titles(title, version != null ? version : I18n.t("No encontrado", "Not found"));
-        if (tc.getChildCount() > 1) {
-            TextView v = (TextView) tc.getChildAt(1);
-            v.setMaxLines(1);
-            v.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-        }
-        r.addView(tc);
         String st = state(stateKey);
         long when = 0;
-        String ver = null;
+        String ver = null, engine = null;
         if (st != null) {
             String[] parts = st.split("\\|");
             try {
@@ -615,7 +635,22 @@ public class SettingsActivity extends Activity {
             } catch (Throwable ignored) {
             }
             if (parts.length > 1) ver = parts[1];
+            // Tercer dato (desde la 2.0): con qué API de Xposed se cargó el módulo ahí.
+            if (parts.length > 2 && !"cc_seen".equals(stateKey) && when >= bootTime()) engine = parts[2];
         }
+        LinearLayout tc = titles(title, version != null ? version : I18n.t("No encontrado", "Not found"));
+        if (tc.getChildCount() > 1) {
+            TextView v = (TextView) tc.getChildAt(1);
+            v.setMaxLines(1);
+            v.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        }
+        if (engine != null) {
+            TextView e = text(engine, 12, text2);
+            e.setMaxLines(1);
+            e.setEllipsize(TextUtils.TruncateAt.END);
+            tc.addView(e);
+        }
+        r.addView(tc);
         boolean active = when >= bootTime();
         boolean old = active && !"cc_seen".equals(stateKey) && ver != null && !ver.equals(Version.NAME);
         String label = !active ? (when > 0 ? I18n.t("Sin cargar", "Not loaded") : I18n.t("No detectado", "Not detected"))
@@ -1084,6 +1119,88 @@ public class SettingsActivity extends Activity {
      * versiones anteriores (ver {@link Migrate}). Va en segundo plano porque pide root; si
      * importa algo, la pantalla se vuelve a crear con los valores importados.
      */
+    /** Pregunta antes de aplicar un perfil: pisa los ajustes de animación que hubiera. */
+    private void confirmPreset(final Object[] preset) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(I18n.t("Aplicar el perfil «", "Apply the “") + Presets.name(preset) + I18n.t("»", "” preset"))
+                .setMessage(Presets.about(preset) + "\n\n" + I18n.t(
+                        "Cambia los ajustes de forma, velocidad y calidad de las animaciones. No enciende ni apaga "
+                                + "funciones y no toca el cristal ni los fotogramas por segundo. Si quieres poder volver "
+                                + "atrás, exporta antes tus ajustes (Acerca de → Exportar ajustes).",
+                        "It changes the shape, speed and quality settings of the animations. It doesn't turn features "
+                                + "on or off, and it leaves the glass and the frame rate alone. To be able to go back, "
+                                + "export your settings first (About → Export settings)."))
+                .setNegativeButton(I18n.t("Cancelar", "Cancel"), null)
+                .setPositiveButton(I18n.t("Aplicar", "Apply"), new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface d, int which) {
+                        Presets.apply(SettingsActivity.this, preset);
+                        settingsReplaced();
+                        toast(I18n.t("Perfil aplicado: ", "Preset applied: ") + Presets.name(preset));
+                    }
+                })
+                .show();
+    }
+
+    /** Tras cambiar muchos ajustes de golpe: avisa a los procesos enganchados y repinta la app. */
+    private void settingsReplaced() {
+        if (Migrate.needed(this)) Migrate.skip(this);       // ya no hay que importar los antiguos
+        send(Remote.TUNE);
+        for (Runnable rf : refreshers) rf.run();
+    }
+
+    private static final int REQ_EXPORT = 1, REQ_IMPORT = 2;
+
+    /**
+     * Abre el selector de archivos del sistema para guardar (exportar) o elegir (importar) el
+     * archivo. Así la app no necesita ningún permiso de almacenamiento.
+     */
+    private void pickFile(boolean export) {
+        try {
+            android.content.Intent i = new android.content.Intent(export
+                    ? android.content.Intent.ACTION_CREATE_DOCUMENT : android.content.Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+            // Al importar se acepta cualquier tipo: algunos gestores no reconocen .json.
+            i.setType(export ? "application/json" : "*/*");
+            if (export) i.putExtra(android.content.Intent.EXTRA_TITLE, Backup.FILE_NAME);
+            startActivityForResult(i, export ? REQ_EXPORT : REQ_IMPORT);
+        } catch (Throwable t) {
+            toast(I18n.t("Este móvil no tiene selector de archivos", "This phone has no file picker"));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, android.content.Intent data) {
+        super.onActivityResult(request, result, data);
+        if (result != RESULT_OK || data == null || data.getData() == null) return;
+        android.net.Uri uri = data.getData();
+        try {
+            if (request == REQ_EXPORT) {
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
+                    out.write(Backup.export(this).getBytes("UTF-8"));
+                }
+                toast(I18n.t("Ajustes exportados", "Settings exported"));
+            } else if (request == REQ_IMPORT) {
+                StringBuilder sb = new StringBuilder();
+                try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                    byte[] buf = new byte[8192];
+                    // Un archivo de ajustes ocupa unos pocos KB: no se lee más de 1 MB.
+                    for (int n; sb.length() < (1 << 20) && (n = in.read(buf)) > 0; ) sb.append(new String(buf, 0, n, "UTF-8"));
+                }
+                int n = Backup.restore(this, sb.toString());
+                if (n < 0) {
+                    toast(I18n.t("Ese archivo no es de ajustes de HyperSpring", "That file is not a HyperSpring settings file"));
+                    return;
+                }
+                settingsReplaced();
+                toast(I18n.t("Ajustes importados: ", "Settings imported: ") + n + ". "
+                        + I18n.t("Reinicia el launcher y la interfaz para las funciones.", "Restart the launcher and System UI for the features."));
+            }
+        } catch (Throwable t) {
+            toast(I18n.t("No se pudo: ", "Failed: ") + t.getMessage());
+        }
+    }
+
     private void importOldPrefs() {
         Migrate.listener = new Runnable() {
             @Override

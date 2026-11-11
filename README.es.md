@@ -6,7 +6,7 @@
 
 <p align="center">
   Animaciones y cristal líquido para HyperOS · módulo LSPosed<br>
-  <b>v1.1.0-beta1</b> · <a href="README.md">English</a>
+  <b>v2.0.0</b> · <a href="README.md">English</a>
 </p>
 
 ---
@@ -150,7 +150,7 @@ Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.u
 
 ## Próximamente
 
-En camino: rebote elástico global, más estilos de recientes, efectos en el fondo de pantalla, ajustes que se aplican sin reiniciar (libxposed API 102), vista previa dentro de la app, perfiles predefinidos y más. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/olilio3/HyperSpring/issues).
+En camino: recarga en caliente con libxposed API 102, carpetas con muelle en el launcher de serie y soporte de POCO Launcher. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/olilio3/HyperSpring/issues).
 
 ## Créditos
 

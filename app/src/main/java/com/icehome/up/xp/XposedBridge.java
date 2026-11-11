@@ -50,7 +50,7 @@ public final class XposedBridge {
     /** Engancha todos los métodos con ese nombre declarados en la clase. Devuelve los enganchados. */
     public static Set<Member> hookAllMethods(Class<?> c, String name, XC_MethodHook callback) {
         Set<Member> done = new HashSet<>();
-        for (Method m : c.getDeclaredMethods()) {
+        for (Method m : XposedHelpers.declaredMethods(c)) {
             if (!m.getName().equals(name) || Modifier.isAbstract(m.getModifiers())) continue;
             hookMethod(m, callback);
             done.add(m);

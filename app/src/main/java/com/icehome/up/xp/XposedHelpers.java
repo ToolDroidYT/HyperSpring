@@ -48,6 +48,42 @@ public final class XposedHelpers {
 
     // ------------------------------------------------------------------ métodos y constructores
 
+    private static Method unchecked;
+    private static boolean uncheckedResolved;
+
+    /**
+     * Los métodos declarados en una clase, aunque alguno use un tipo que no existe en este móvil.
+     *
+     * <p>{@code Class.getDeclaredMethods()} comprueba los tipos de TODOS los métodos y, si uno
+     * solo no se puede cargar, falla entero con NoClassDefFoundError. Pasa con
+     * {@code BaseLauncher} del launcher de Kashi, que tiene un método que nombra una clase
+     * ({@code NewHomeView}) que no viene en el APK: por eso no se encontraba ninguno de sus
+     * métodos. Android tiene por dentro una versión que no comprueba nada
+     * ({@code getDeclaredMethodsUnchecked}); se usa como respaldo. Con los métodos que devuelve,
+     * pide {@code getParameterCount()} antes que {@code getParameterTypes()}: el segundo sí puede
+     * fallar en el método problemático.
+     */
+    public static Method[] declaredMethods(Class<?> c) {
+        if (c == null) return new Method[0];
+        try {
+            return c.getDeclaredMethods();
+        } catch (LinkageError e) {
+            // sigue abajo, con la versión que no comprueba los tipos
+        }
+        try {
+            synchronized (XposedHelpers.class) {
+                if (!uncheckedResolved) {
+                    uncheckedResolved = true;
+                    unchecked = Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked", boolean.class);
+                    unchecked.setAccessible(true);
+                }
+            }
+            if (unchecked != null) return (Method[]) unchecked.invoke(c, false);
+        } catch (Throwable ignored) {
+        }
+        return new Method[0];
+    }
+
     /** Método declarado en la clase con exactamente esos tipos (Class o nombre de clase). */
     public static Method findMethodExact(Class<?> c, String name, Object... types) {
         try {
@@ -128,9 +164,14 @@ public final class XposedHelpers {
 
     private static Method bestMatch(Class<?> c, String name, Object[] args) {
         for (Class<?> k = c; k != null; k = k.getSuperclass()) {
-            for (Method m : k.getDeclaredMethods()) {
+            for (Method m : declaredMethods(k)) {
                 if (!m.getName().equals(name) || Modifier.isAbstract(m.getModifiers())) continue;
-                if (!fits(m.getParameterTypes(), args)) continue;
+                if (m.getParameterCount() != args.length) continue;
+                try {
+                    if (!fits(m.getParameterTypes(), args)) continue;
+                } catch (LinkageError e) {
+                    continue;                               // usa un tipo que no existe aquí
+                }
                 m.setAccessible(true);
                 return m;
             }

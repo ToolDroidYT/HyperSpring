@@ -6,7 +6,7 @@
 
 <p align="center">
   Animations and liquid glass for HyperOS · LSPosed module<br>
-  <b>v1.1.0-beta1</b> · <a href="README.es.md">Español</a>
+  <b>v2.0.0</b> · <a href="README.es.md">Español</a>
 </p>
 
 ---
@@ -164,7 +164,7 @@ If the phone doesn't boot properly, disable the module in LSPosed, or boot into 
 
 ## Roadmap
 
-Coming next: global elastic bounce, more recents styles, wallpaper effects, hot reload on libxposed API 102, an in-app preview, presets and more. See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/olilio3/HyperSpring/issues).
+Coming next: hot reload on libxposed API 102, springy folders on the stock launcher and POCO Launcher support. See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/olilio3/HyperSpring/issues).
 
 ## Credits
 

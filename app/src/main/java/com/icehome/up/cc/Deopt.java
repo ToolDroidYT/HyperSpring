@@ -22,7 +22,7 @@ final class Deopt {
     static int all(Class<?> c) {
         if (c == null) return 0;
         int n = 0;
-        for (Method m : c.getDeclaredMethods()) {
+        for (Method m : com.icehome.up.xp.XposedHelpers.declaredMethods(c)) {
             if (java.lang.reflect.Modifier.isAbstract(m.getModifiers())
                     || java.lang.reflect.Modifier.isNative(m.getModifiers())) continue;
             method(m);

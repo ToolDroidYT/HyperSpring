@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.0
+
+A major version because the way the module loads has changed: it now uses the modern Xposed API. It includes everything from 1.1.0-beta1.
+
+**Which APK to install**
+- `HyperSpring.apk`: for Vector 2.x and other current frameworks (libxposed API 101 or newer).
+- `HyperSpring-legacy.apk`: for older LSPosed builds (classic API 93).
+- Both install over 1.0.x and keep your settings. With `HyperSpring.apk` the old settings are imported the first time it runs; that import needs root.
+- After updating, restart the launcher and System UI from the app (or reboot).
+
+**New**
+- **libxposed API 102.** The module loads through the modern Xposed API where the framework supports it. The animations themselves are unchanged, and frame counts are the same with both APIs.
+- **Presets.** Smooth, iOS-like, Fast and Performance, one tap each (Home → Presets). A preset only changes the shape, speed and quality settings of the animations: it doesn't switch features on or off, and it leaves the glass look and the frame rate alone.
+- **Export and import settings** (About → Settings). The file is plain JSON and also records the module version, the phone and the API in use, so it is handy to attach to a bug report. Importing only accepts settings the module knows, within their valid range.
+- **The compatibility card shows which API loaded the module** in the launcher and in System UI.
+
+**Fixes**
+- **Sliders now reach the launcher right away.** Android was dropping the "settings changed" message on its way to the launcher, so launcher values only applied after restarting it.
+- **Folder hooks on Kashi's launcher.** One launcher class could not be inspected because of a method that refers to a class missing from the APK, so its folder-resize hook was never installed and an error was logged on every start. The module now reads that class without tripping on the broken method.
+
+**Roadmap:** rewritten. Effects that few people would keep on (gyroscope parallax, wallpaper ripple, unlock cascade, rubber-band sliders, elastic overscroll in every app) are dropped, with the reasons. Hot reload is next.
+
+**Tested on a Redmi 14C** (HyperOS 3, Android 16, Vector 2.2) with both APKs.
+
 ## 1.1.0-beta1
 
 **libxposed API 102**

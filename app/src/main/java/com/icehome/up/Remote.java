@@ -133,7 +133,8 @@ final class Remote {
             String ver = Version.NAME;              // la del módulo cargado aquí, no la de este proceso
             android.content.ContentValues v = new android.content.ContentValues();
             v.put("key", key);
-            v.put("value", System.currentTimeMillis() + "|" + ver);
+            // hora | versión | API con la que se cargó (para la tarjeta de compatibilidad)
+            v.put("value", System.currentTimeMillis() + "|" + ver + "|" + MainHook.engineName());
             ctx.getContentResolver().insert(PrefsProvider.STATE, v);
         } catch (Throwable ignored) {
         }
