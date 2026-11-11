@@ -213,13 +213,16 @@ final class TelonRenderer {
     }
 
     private static void checkGlError(String operation) {
+        int firstError = GLES20.GL_NO_ERROR;
         for (int i = 0; i < 8; i++) {
             int error = GLES20.glGetError();
-            if (error == GLES20.GL_NO_ERROR) return;
+            if (error == GLES20.GL_NO_ERROR) break;
             if (error == 0x0507) throw new GlContextLost(operation);
-            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(error));
+            if (firstError == GLES20.GL_NO_ERROR) firstError = error;
         }
-        throw new IllegalStateException(operation + ": too many pending GL errors");
+        if (firstError != GLES20.GL_NO_ERROR) {
+            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(firstError));
+        }
     }
 
     private static boolean isContextLost(Throwable error) {
@@ -437,8 +440,14 @@ final class TelonRenderer {
             pbuffer = EGL14.EGL_NO_SURFACE;
             return true;
         } catch (Throwable t) {
-            if (pbuffer != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
-                try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                try {
+                    EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                            EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                } catch (Throwable ignored) {}
+                if (pbuffer != EGL14.EGL_NO_SURFACE) {
+                    try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+                }
             }
             destroyEglContext();
             throw t;
@@ -470,13 +479,18 @@ final class TelonRenderer {
     }
 
     private static int compile(int type, String src) {
-        int s = GLES20.glCreateShader(type);
-        GLES20.glShaderSource(s, src);
-        GLES20.glCompileShader(s);
+        int shader = GLES20.glCreateShader(type);
+        if (shader == 0) throw new IllegalStateException("glCreateShader returned 0");
+        GLES20.glShaderSource(shader, src);
+        GLES20.glCompileShader(shader);
         int[] ok = new int[1];
-        GLES20.glGetShaderiv(s, GLES20.GL_COMPILE_STATUS, ok, 0);
-        if (ok[0] == 0) throw new IllegalStateException("shader: " + GLES20.glGetShaderInfoLog(s));
-        return s;
+        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, ok, 0);
+        if (ok[0] == 0) {
+            String info = GLES20.glGetShaderInfoLog(shader);
+            GLES20.glDeleteShader(shader);
+            throw new IllegalStateException("shader: " + info);
+        }
+        return shader;
     }
 
     private static void makeCurrent() {
@@ -513,9 +527,12 @@ final class TelonRenderer {
             try {
                 in.st.updateTexImage();
                 in.st.getTransformMatrix(in.texMatrix);
-                return in.owner;
+                Object owner = in.owner;
+                in.owner = null;
+                return owner;
             } catch (Throwable e) {
                 Log.e("textura de la captura", e);
+                recover(e);
                 return null;
             }
         }
@@ -591,13 +608,16 @@ final class TelonRenderer {
             GLES20.glUniform1i(dSrc, 0);
             drawQuad(dPos);
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            checkGlError("prepare curtain blur");
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo desenfocar la de debajo", e);
             recover(e);
-            try {
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-            } catch (Throwable ignored) {
+            if (!isContextLost(e)) {
+                try {
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+                } catch (Throwable ignored) {
+                }
             }
             return false;
         }
