@@ -542,7 +542,7 @@ final class GlRenderer {
                 return owner;
             } catch (Throwable e) {
                 Log.e("genio: textura de la captura", e);
-                recover(e);
+                if (isContextLost(e)) recover(e);
                 return null;
             }
         }
