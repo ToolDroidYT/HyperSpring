@@ -546,8 +546,9 @@ final class TelonRenderer {
                 in.owner = null;
                 return owner;
             } catch (Throwable e) {
+                in.owner = null;
                 Log.e("textura de la captura", e);
-                recover(e);
+                if (isContextLost(e)) recover(e);
                 return null;
             }
         }
@@ -561,14 +562,15 @@ final class TelonRenderer {
     private static void fboEnsure(int i, int w, int h) {
         if (fbo[i] != 0 && fboW[i] == w && fboH[i] == h) return;
         int[] v = new int[1];
-        if (fboTex[i] == 0 || fbo[i] == 0) {
+        if (fboTex[i] == 0) {
             GLES20.glGenTextures(1, v, 0);
             fboTex[i] = v[0];
+            if (fboTex[i] == 0) throw new IllegalStateException("Could not allocate blur texture");
+        }
+        if (fbo[i] == 0) {
             GLES20.glGenFramebuffers(1, v, 0);
             fbo[i] = v[0];
-            if (fboTex[i] == 0 || fbo[i] == 0) {
-                throw new IllegalStateException("Could not allocate blur framebuffer resources");
-            }
+            if (fbo[i] == 0) throw new IllegalStateException("Could not allocate blur framebuffer");
         }
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTex[i]);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
