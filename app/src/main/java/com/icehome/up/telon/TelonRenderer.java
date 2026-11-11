@@ -194,7 +194,7 @@ final class TelonRenderer {
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
-    private static Thread glThread;
+    private static volatile Thread glThread;
 
     private static void assertGlThread() {
         Thread current = Thread.currentThread();
@@ -535,6 +535,7 @@ final class TelonRenderer {
 
     /** Hilo de dibujo: pasa la captura a su textura; devuelve de quién era (o null). */
     static Object consume(int slot) {
+        assertGlThread();
         synchronized (queueLock) {
             Input in = inputs[slot];
             if (!in.queued || in.st == null) return null;
@@ -600,6 +601,7 @@ final class TelonRenderer {
      * más desenfoque). Dos pasadas a texturas diminutas: casi gratis incluso en una Mali-G52.
      */
     static boolean prepareBelow(float spread) {
+        assertGlThread();
         try {
             makeCurrent();
             Input in = inputs[BELOW];
@@ -642,6 +644,7 @@ final class TelonRenderer {
 
     /** Empieza un fotograma (búfer transparente). Luego {@link #drawBelow}, {@link #drawTop}, {@link #end}. */
     static boolean begin() {
+        assertGlThread();
         try {
             makeCurrent();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
@@ -673,6 +676,7 @@ final class TelonRenderer {
      * de movimiento {@code blur} (largo de la estela, px de la ventana; 0 = nítido).
      */
     static boolean drawTop(Matrix m, float alpha, float winW, float winH, float radius, float bend, float blur) {
+        assertGlThread();
         try {
             GLES20.glUseProgram(program);
             float sx = matrix(m);
@@ -708,6 +712,7 @@ final class TelonRenderer {
      * oscurecida {@code dim} (lo que la oscurecería HyperOS: su capa de color se oculta con ella).
      */
     static boolean drawBelow(Matrix m, float alpha, float winW, float winH, float radius, float dim, float amount) {
+        assertGlThread();
         try {
             GLES20.glUseProgram(programBelow);
             float sx = matrix(m);
@@ -750,6 +755,7 @@ final class TelonRenderer {
 
     /** Termina el fotograma y lo manda al compositor. */
     static boolean end() {
+        assertGlThread();
         try {
             checkGlError("end curtain frame");
             checkEgl(EGL14.eglSwapBuffers(display, window), "eglSwapBuffers");
@@ -815,7 +821,7 @@ final class TelonRenderer {
             for (Input in : inputs) in.release();
         }
 
-        if (display != EGL14.EGL_NO_DISPLAY) {
+        if (display != EGL14.EGL_NO_DISPLAY && displayInitialized) {
             try {
                 EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
@@ -824,9 +830,7 @@ final class TelonRenderer {
             if (context != EGL14.EGL_NO_CONTEXT) {
                 try { EGL14.eglDestroyContext(display, context); } catch (Throwable ignored) {}
             }
-            if (displayInitialized) {
-                try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
-            }
+            try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
         }
 
         context = EGL14.EGL_NO_CONTEXT;
