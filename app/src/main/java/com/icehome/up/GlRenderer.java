@@ -651,8 +651,7 @@ final class GlRenderer {
         assertGlThread();
         if (c == null || c == main) return;
         boolean deleteTextures = false;
-        if (c.generation == contextGeneration && context != EGL14.EGL_NO_CONTEXT
-                && window != EGL14.EGL_NO_SURFACE) {
+        if (c.generation == contextGeneration && context != EGL14.EGL_NO_CONTEXT) {
             try {
                 if (window != EGL14.EGL_NO_SURFACE) makeCurrent();
                 else makeMaintenanceCurrent();
