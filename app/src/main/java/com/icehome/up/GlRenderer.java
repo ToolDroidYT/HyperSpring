@@ -212,6 +212,8 @@ final class GlRenderer {
     private static EGLContext context = EGL14.EGL_NO_CONTEXT;
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
+    /** Hidden 1×1 surface used to release textures when no output layer exists. */
+    private static EGLSurface maintenance = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
     private static volatile long contextGeneration = 1L;
     private static volatile Thread glThread;
@@ -244,7 +246,7 @@ final class GlRenderer {
     private static void setNonBlockingSwapInterval() {
         if (!EGL14.eglSwapInterval(display, 0)) {
             int error = EGL14.eglGetError();
-            if (error == 0x300E) throw new EglFailure("eglSwapInterval", error);
+            if (isEglContextLostError(error)) throw new EglFailure("eglSwapInterval", error);
             // Some drivers require their default interval; this is a pacing hint, not a requirement.
         }
     }
@@ -262,9 +264,16 @@ final class GlRenderer {
         }
     }
 
+    private static boolean isEglContextLostError(int error) {
+        return error == 0x300E  // EGL_CONTEXT_LOST
+                || error == 0x3006  // EGL_BAD_CONTEXT
+                || error == 0x3001  // EGL_NOT_INITIALIZED
+                || error == 0x3008; // EGL_BAD_DISPLAY
+    }
+
     private static boolean isContextLost(Throwable error) {
         return error instanceof GlContextLost
-                || (error instanceof EglFailure && ((EglFailure) error).error == 0x300E);
+                || (error instanceof EglFailure && isEglContextLostError(((EglFailure) error).error));
     }
 
     /** Surface failures can be retried with the current context; context loss cannot. */
@@ -477,7 +486,7 @@ final class GlRenderer {
 
             checkEgl(EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                     EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT), "eglMakeCurrent(unbind pbuffer)");
-            checkEgl(EGL14.eglDestroySurface(display, pbuffer), "eglDestroySurface(pbuffer)");
+            maintenance = pbuffer;
             pbuffer = EGL14.EGL_NO_SURFACE;
             return true;
         } catch (Throwable t) {
@@ -510,6 +519,16 @@ final class GlRenderer {
             throw new IllegalStateException("EGL renderer is not initialized");
         }
         checkEgl(EGL14.eglMakeCurrent(display, window, window, context), "eglMakeCurrent(window)");
+    }
+
+    private static void makeMaintenanceCurrent() {
+        assertGlThread();
+        if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
+                || maintenance == EGL14.EGL_NO_SURFACE) {
+            throw new IllegalStateException("EGL maintenance surface is unavailable");
+        }
+        checkEgl(EGL14.eglMakeCurrent(display, maintenance, maintenance, context),
+                "eglMakeCurrent(maintenance)");
     }
 
     // ------------------------------------------------------------------ contenido
@@ -635,7 +654,8 @@ final class GlRenderer {
         if (c.generation == contextGeneration && context != EGL14.EGL_NO_CONTEXT
                 && window != EGL14.EGL_NO_SURFACE) {
             try {
-                makeCurrent();
+                if (window != EGL14.EGL_NO_SURFACE) makeCurrent();
+                else makeMaintenanceCurrent();
                 deleteTextures = true;
             } catch (Throwable t) {
                 recover(t);
@@ -779,7 +799,7 @@ final class GlRenderer {
             try {
                 if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
-                    contextLost = EGL14.eglGetError() == 0x300E;
+                    contextLost = isEglContextLostError(EGL14.eglGetError());
                 }
             } catch (Throwable ignored) {
             }
@@ -787,7 +807,7 @@ final class GlRenderer {
         if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
             try {
                 if (!EGL14.eglDestroySurface(display, oldWindow)) {
-                    contextLost |= EGL14.eglGetError() == 0x300E;
+                    contextLost |= isEglContextLostError(EGL14.eglGetError());
                 }
             } catch (Throwable ignored) {}
         }
@@ -827,11 +847,16 @@ final class GlRenderer {
             queuedOwner = null;
         }
 
+        EGLSurface oldMaintenance = maintenance;
+        maintenance = EGL14.EGL_NO_SURFACE;
         if (display != EGL14.EGL_NO_DISPLAY && displayInitialized) {
             try {
                 EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
             } catch (Throwable ignored) {
+            }
+            if (oldMaintenance != EGL14.EGL_NO_SURFACE) {
+                try { EGL14.eglDestroySurface(display, oldMaintenance); } catch (Throwable ignored) {}
             }
             if (context != EGL14.EGL_NO_CONTEXT) {
                 try { EGL14.eglDestroyContext(display, context); } catch (Throwable ignored) {}
