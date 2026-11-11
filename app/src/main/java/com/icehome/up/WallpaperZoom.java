@@ -3,9 +3,9 @@ package com.icehome.up;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * El fondo de pantalla se acerca al abrir una app y se aleja al volver al escritorio, como en

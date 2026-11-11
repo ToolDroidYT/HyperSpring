@@ -10,9 +10,9 @@ import android.view.ViewGroup;
 
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Recientes como cortinas rígidas: al deslizar las tarjetas, cada una se dobla hacia el lado

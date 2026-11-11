@@ -10,8 +10,8 @@ android {
         applicationId = "com.icehome.up"
         minSdk = 30
         targetSdk = 35
-        versionCode = 47
-        versionName = "1.0.3"
+        versionCode = 48
+        versionName = "1.1.0-beta1"
     }
 
     buildTypes {
@@ -29,5 +29,7 @@ android {
 }
 
 dependencies {
-    compileOnly("de.robv.android.xposed:api:82")
+    // Las dos API de Xposed, solo para compilar: en el móvil las pone el framework.
+    compileOnly("de.robv.android.xposed:api:82")          // clásica, motor LegacyEngine
+    compileOnly("io.github.libxposed:api:102.0.0")        // libxposed, motor ModernEngine
 }

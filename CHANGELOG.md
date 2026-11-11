@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0-beta1
+
+**libxposed API 102**
+- **The module now loads through the modern Xposed API** (libxposed 102) on frameworks that support it, such as Vector 2.x. Every hook goes through a small facade of our own (`xp/`) with two engines behind it: libxposed (`ModernEngine`) and classic Xposed 93 (`LegacyEngine`). The animations themselves are unchanged.
+- **Two APKs per release, same code:**
+  - `HyperSpring.apk`: libxposed (needs API 101 or newer; written for 102). Use this one on Vector and other current frameworks.
+  - `HyperSpring-legacy.apk`: classic API 93 only, for older LSPosed builds. Those only know the retired API 100 and would fail to load the other APK.
+- **Your settings come along.** With the classic API, LSPosed kept the app's settings in a folder of its own; with libxposed they live in the app's normal storage. The first time 1.1.0 runs it imports the old settings (needs root, which the app already uses to restart the launcher). Without root, settings go back to defaults.
+- Hot reload (applying a module update without restarting the launcher or System UI) is planned for a later beta.
+
+**Fixes**
+- **Sliders now reach the launcher right away.** The "settings changed" broadcast required the *receiver* to hold the app's signature permission. System UI passed that check, the launcher did not, and Android dropped the broadcast, so launcher values only applied after restarting it. The broadcast is now sent to each package by name; receivers still only accept it from this app.
+
+**Tested on a Redmi 14C** (HyperOS 3, Android 16, Vector 2.2): both APKs, opening and closing apps with button and gesture, recents, control center glass, settings import. Frame counts are the same with both engines.
+
+**Build:** `local-build/build.sh` now produces both APKs. It compiles against a copy of the libxposed API sources (`local-build/libxposed-stub`, Apache-2.0), which are not packaged. With Gradle, `compileOnly("io.github.libxposed:api:102.0.0")`.
+
 ## 1.0.3
 
 **Genie: smoother, and closer to how HyperOS animates on its own**

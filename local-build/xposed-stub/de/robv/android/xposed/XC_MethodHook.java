@@ -10,6 +10,8 @@ public abstract class XC_MethodHook {
         public Object[] args;
         public Object getResult() { return null; }
         public void setResult(Object result) {}
+        public Throwable getThrowable() { return null; }
+        public void setThrowable(Throwable throwable) {}
         public void setObjectExtra(String key, Object o) {}
         public Object getObjectExtra(String key) { return null; }
     }

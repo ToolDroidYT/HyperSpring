@@ -6,7 +6,7 @@
 
 <p align="center">
   Animaciones y cristal líquido para HyperOS · módulo LSPosed<br>
-  <b>v1.0.3</b> · <a href="README.md">English</a>
+  <b>v1.1.0-beta1</b> · <a href="README.md">English</a>
 </p>
 
 ---
@@ -96,7 +96,7 @@ HyperSpring añade al launcher y a la interfaz del sistema de HyperOS animacione
 
 ## Instalación
 
-1. Instala el APK de [Releases](../../releases).
+1. Instala el APK de [Releases](../../releases): `HyperSpring.apk` en Vector y otros frameworks actuales (libxposed API 102), `HyperSpring-legacy.apk` en LSPosed antiguos.
 2. En LSPosed, activa **HyperSpring** y marca los ámbitos **Launcher del sistema** e **Interfaz del sistema**.
 3. Reinicia el móvil.
 4. Abre HyperSpring y concede root cuando lo pida (solo se usa para reiniciar el launcher y la interfaz).
@@ -133,7 +133,7 @@ Si el móvil no arranca bien, desactiva el módulo en LSPosed. También puedes a
 ## Compilar
 
 - **Con Android SDK:** `./gradlew assembleRelease`.
-- **Sin SDK:** `TOOLS=/ruta bash local-build/build.sh`. Usa JDK 17, `android.jar` de la API 35, jadx (D8), apktool (aapt2) y uber-apk-signer. El APK sale en `local-build/out/HyperSpring.apk`.
+- **Sin SDK:** `TOOLS=/ruta bash local-build/build.sh`. Usa JDK 17, `android.jar` de la API 35, jadx (D8), apktool (aapt2) y uber-apk-signer. Los APK salen en `local-build/out/`: `HyperSpring.apk` (libxposed API 102) y `HyperSpring-legacy.apk` (API 93).
 - **Shaders:** antes de compilar se validan los AGSL (`agsl_check.py`, con skia-python). Los de OpenGL se comprueban con Mesa usando los scripts de `local-build/`.
 
 Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.up`.

@@ -23,13 +23,14 @@ Ideas planned for upcoming versions. Nothing here is implemented yet, and plans 
 - [ ] **Rubber-band volume and brightness sliders:** they stretch slightly at the limit and snap back.
 
 ## Features
-- [ ] **libxposed API 102 with hot reload:** settings apply without restarting the launcher or System UI. The legacy engine (API 93) stays for older LSPosed versions.
+- [ ] **Hot reload on libxposed API 102:** module updates and feature switches apply without restarting the launcher or System UI. *(1.1.0-beta1: the module already loads through API 102; hot reload itself is the next step.)*
 - [ ] **In-app preview:** see each animation before turning it on.
 - [ ] **Presets:** Smooth, iOS-like, Fast and Minimal, one tap each.
 - [ ] **Export and import settings** as a file (also handy for bug reports).
 - [ ] **Performance mode:** detect weaker GPUs and lower shader quality automatically.
 
 ## Done
+- [x] 1.1.0-beta1: libxposed API 102 through our own hook facade with two engines; the legacy engine (API 93) stays as a separate APK for older LSPosed versions. Sliders now reach the launcher without restarting it.
 - [x] 1.0.3: smoother genie that looks closer to stock HyperOS (threads on every core, drawing on every refresh with prediction, the app's own colour when opening, landing in the icon like MIUI). Details in the CHANGELOG.
 - [x] 1.0.2: the control center glass stopped working after a while. Confirmed on the test phone.
 - [x] 1.0.0: the APK was built with targetSdk 30, so Android 16 refused to install it. Fixed (now targetSdk 35).

@@ -12,3 +12,8 @@ task cards that are hidden or recycled, and fading it out instead of cutting
 it) are based on changes in the community fork by ToolDroidYT
 (https://github.com/ToolDroidYT/hyperspring), licensed under the Apache
 License, Version 2.0.
+
+local-build/libxposed-stub/io/github/libxposed/api contains an unmodified copy
+of the libxposed API sources, version 102.0.0 (https://github.com/libxposed/api),
+licensed under the Apache License, Version 2.0. It is used only to compile the
+module without Gradle and is not included in the APK.

@@ -23,13 +23,14 @@ Ideas previstas para las próximas versiones. Nada de esto está implementado to
 - [ ] **Efecto goma en los sliders de volumen y brillo:** se estiran al llegar al tope y vuelven.
 
 ## Funciones
-- [ ] **libxposed API 102 con recarga en caliente:** los ajustes se aplican sin reiniciar el launcher ni la interfaz del sistema. Mantener también el motor antiguo (API 93) para quien use LSPosed viejo.
+- [ ] **Recarga en caliente con libxposed API 102:** las actualizaciones del módulo y los interruptores de función se aplican sin reiniciar el launcher ni la interfaz del sistema. *(1.1.0-beta1: el módulo ya se carga con la API 102; falta la recarga en caliente.)*
 - [ ] **Vista previa dentro de la app:** ver cada animación antes de activarla.
 - [ ] **Perfiles predefinidos:** Suave, Estilo iOS, Rápido y Mínimo, con un toque.
 - [ ] **Exportar e importar ajustes** en un archivo (sirve también para los reportes de errores).
 - [ ] **Modo rendimiento:** detectar GPUs débiles y bajar la calidad de los shaders automáticamente.
 
 ## Hecho
+- [x] 1.1.0-beta1: libxposed API 102 con una fachada propia de hooks y dos motores; el motor antiguo (API 93) sigue como APK aparte para LSPosed viejos. Los deslizadores ya llegan al launcher sin reiniciarlo.
 - [x] 1.0.3: genio más fluido y más parecido a la animación de serie de HyperOS (hilos en todos los núcleos, dibujo en cada refresco con predicción, color de la app al abrir, aterrizaje en el icono como MIUI). Detalles en el CHANGELOG.
 - [x] 1.0.2: el cristal del centro de control dejaba de funcionar al cabo de un rato. Confirmado en el móvil de pruebas.
 - [x] 1.0.0: el APK se compilaba con targetSdk 30 y Android 16 no dejaba instalarlo. Arreglado en `local-build/build.sh` (ahora targetSdk 35).

@@ -35,9 +35,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Centro de control con el material de cristal de HyperOS 4 (plugin miui.systemui.plugin, de

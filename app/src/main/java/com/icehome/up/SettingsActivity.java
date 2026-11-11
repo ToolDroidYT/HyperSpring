@@ -75,6 +75,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        importOldPrefs();
         I18n.init(this);
         dp = getResources().getDisplayMetrics().density;
         palette();
@@ -144,6 +145,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onDestroy() {
         LiveBackground.setOnFrame(null);
+        Migrate.listener = null;
         super.onDestroy();
     }
 
@@ -1077,6 +1079,27 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------------------------------------------------------------- datos
+    /**
+     * Primera vez que se abre la app tras pasar a libxposed (1.1.0): trae los ajustes de las
+     * versiones anteriores (ver {@link Migrate}). Va en segundo plano porque pide root; si
+     * importa algo, la pantalla se vuelve a crear con los valores importados.
+     */
+    private void importOldPrefs() {
+        Migrate.listener = new Runnable() {
+            @Override
+            public void run() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        toast(I18n.t("Ajustes de la versión anterior importados", "Settings from the previous version imported"));
+                        if (!isFinishing() && !isDestroyed()) recreate();
+                    }
+                });
+            }
+        };
+        Migrate.start(this);
+    }
+
     private float stored(Object[] it) {
         float def = (Float) it[4];
         try {
@@ -1093,13 +1116,13 @@ public class SettingsActivity extends Activity {
         if (value == null) e.remove(key);
         else e.putString(key, value);
         e.commit();
+        // Si aún no se han importado los ajustes antiguos (sin root), ya no se hará: pisarían este.
+        if (Migrate.needed(this)) Migrate.skip(this);
         send(Remote.TUNE);
     }
 
     private void send(String action) {
-        android.content.Intent i = new android.content.Intent(action);
-        i.addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND);
-        sendBroadcast(i, Remote.PERMISSION);
+        Remote.send(this, action);
     }
 
     /**
