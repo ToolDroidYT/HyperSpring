@@ -213,7 +213,7 @@ final class GlRenderer {
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
     private static boolean displayInitialized;
-    private static long contextGeneration = 1L;
+    private static volatile long contextGeneration = 1L;
 
     private static final class EglFailure extends RuntimeException {
         final int error;
@@ -233,13 +233,16 @@ final class GlRenderer {
     }
 
     private static void checkGlError(String operation) {
+        int firstError = GLES20.GL_NO_ERROR;
         for (int i = 0; i < 8; i++) {
             int error = GLES20.glGetError();
-            if (error == GLES20.GL_NO_ERROR) return;
+            if (error == GLES20.GL_NO_ERROR) break;
             if (error == 0x0507) throw new GlContextLost(operation);
-            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(error));
+            if (firstError == GLES20.GL_NO_ERROR) firstError = error;
         }
-        throw new IllegalStateException(operation + ": too many pending GL errors");
+        if (firstError != GLES20.GL_NO_ERROR) {
+            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(firstError));
+        }
     }
 
     private static boolean isContextLost(Throwable error) {
@@ -455,8 +458,14 @@ final class GlRenderer {
             pbuffer = EGL14.EGL_NO_SURFACE;
             return true;
         } catch (Throwable t) {
-            if (pbuffer != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
-                try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                try {
+                    EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                            EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                } catch (Throwable ignored) {}
+                if (pbuffer != EGL14.EGL_NO_SURFACE) {
+                    try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+                }
             }
             destroyEglContext();
             throw t;
@@ -503,15 +512,22 @@ final class GlRenderer {
     /** Hilo de dibujo: pasa la última captura a la textura principal. Devuelve de quién era, o null. */
     static Object consume() {
         synchronized (queueLock) {
-            if (!queued || main == null || main.input == null) return null;
+            if (!queued || main == null || main.input == null) {
+                queued = false;
+                queuedOwner = null;
+                return null;
+            }
+            Object owner = queuedOwner;
             queued = false;
+            queuedOwner = null;
             try {
                 main.input.updateTexImage();
                 main.input.getTransformMatrix(main.texMatrix);
-                main.windowOwner = queuedOwner;
-                return queuedOwner;
+                main.windowOwner = owner;
+                return owner;
             } catch (Throwable e) {
                 Log.e("genio: textura de la captura", e);
+                recover(e);
                 return null;
             }
         }
@@ -528,10 +544,12 @@ final class GlRenderer {
             try {
                 makeCurrent();
             } catch (Throwable e) {
+                recover(e);
                 return null;
             }
             if (queued && queuedOwner == owner) consume();
             queued = false;
+            queuedOwner = null;
             try {
                 main = Content.create();
                 return old;
@@ -665,6 +683,7 @@ final class GlRenderer {
             GLES20.glEnableVertexAttribArray(p.pos);
             GLES20.glVertexAttribPointer(p.pos, 2, GLES20.GL_FLOAT, false, 0, mesh);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, (ROWS + 1) * 2);
+            checkGlError("draw genie");
             return true;
         } catch (Throwable e) {
             Log.e("genio: no se pudo dibujar", e);
