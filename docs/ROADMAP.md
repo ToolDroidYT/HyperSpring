@@ -8,6 +8,10 @@ The bar for getting on this list: a fair number of people will use it, it can be
 - None open right now. If you find one, open an issue with the log (**About → Copy log**) and your settings (**About → Export settings**).
 
 ## Next
+- [ ] **Opening and closing apps, better than ever:** polish the animation until it feels like Xiaomi made it and is a visual treat.
+  - **No sudden jumps:** capturing the window takes time now (~100 ms on mid-range phones), so the first frame sometimes arrives late and the window jumps. The capture has to be ready before it starts moving, and the hand-off between the real window and ours must be invisible.
+  - **Like stock:** the same springs, timings, corners and shadows as HyperOS, so nobody can tell it's a module.
+  - **A show:** more physics and more light in the styles (Depth above all), without losing smoothness on mid-range phones.
 - [ ] **Hot reload (libxposed API 102):** module updates and feature switches apply without restarting the launcher or System UI.
   - The module already loads through API 102; it still has to learn to "unmount" itself: stop its threads, remove its listeners and reinstall the hooks with the new code.
   - This is the most delicate item here: leaving anything half-done crashes System UI. It will ship in a beta first.
@@ -40,13 +44,13 @@ Ideas noted on 2026-11-11. Not started yet, in no fixed order. Before the home s
 - [ ] **Gentle zoom on unlock:** the home screen comes in with a slight scale, without animating each icon.
 
 ### Features
-- [x] **Apps excluded from the genie:** the apps you pick open and close with the HyperOS animation. Applies right away. *Done, not released yet.* The same for the System UI curtain is still to do.
+- [x] **Apps excluded from the genie:** the apps you pick open and close with the HyperOS animation. Applies right away. *Released in 2.1.0.* The same for the System UI curtain is still to do.
 - [ ] **Automatic pause:** heavy effects switch off by themselves with battery saver, in games (Game Turbo) or when the phone is hot.
 - [ ] **Subtle vibration** in sync with the animations: when the genie lands in the icon, when a folder bounces, when the widget stack changes.
-- [x] **Visual spring editor:** an animated graph of the curve while you move Speed and Bounce, with a tiny phone opening a window with that spring. *Done, not released yet.*
+- [x] **Visual spring editor:** an animated graph of the curve while you move Speed and Bounce, with a tiny phone opening a window with that spring. *Released in 2.1.0.*
 - [ ] **Quick settings tile** to turn HyperSpring on or off and restart the launcher.
-- [x] **New version notice:** checks GitHub releases (can be turned off), and downloads and installs from the app. *Done, not released yet.*
-- [x] **What's new after updating:** an animated screen with the changes the first time the app opens after an update. *Done, not released yet.*
+- [x] **New version notice:** checks GitHub releases (can be turned off), and downloads and installs from the app. *Released in 2.1.0.*
+- [x] **What's new after updating:** an animated screen with the changes the first time the app opens after an update. *Released in 2.1.0.*
 
 ### The app
 - [ ] **Redesigned, heavily animated interface**, like modern websites: staggered entrances, scroll-driven animations, shared transitions between screens and micro-interactions on every control. Always 60 fps on mid-range phones and respecting the system setting that removes animations.
@@ -65,6 +69,7 @@ Ideas that were on the list and have been removed, with the reason:
 - **More recents styles (fan, 3D stack).** What people asked for was a way to turn the bending off, and that already exists (**Home → Recents that bend**).
 
 ## Done
+- [x] 2.1.0: Depth style (the window as a rigid sheet that tilts, with motion blur), style picker as a pull-down menu, visual spring editor, apps without genie, in-app updates and a redesigned app. Details in the CHANGELOG.
 - [x] 2.0.0: libxposed API 102 through our own hook facade with two engines (the legacy one, API 93, stays as a separate APK). One-tap presets (Smooth, iOS-like, Fast, Performance). Export and import settings. The compatibility card shows which API the module loaded with. Sliders reach the launcher without restarting it.
 - [x] 1.0.3: smoother genie that looks closer to stock HyperOS (threads on every core, drawing on every refresh with prediction, the app's own colour when opening, landing in the icon like MIUI). Details in the CHANGELOG.
 - [x] 1.0.2: the control center glass stopped working after a while. Recents cards only bend when you move them with your finger.

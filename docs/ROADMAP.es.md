@@ -8,6 +8,10 @@ Criterio para entrar aquí: que lo vaya a usar bastante gente, que se pueda mant
 - Ninguno abierto ahora mismo. Si encuentras uno, abre un issue con el registro (**Acerca de → Copiar registro**) y tus ajustes (**Acerca de → Exportar ajustes**).
 
 ## Siguiente
+- [ ] **Abrir y cerrar apps mejor que nunca:** pulir la animación hasta que parezca hecha por la propia Xiaomi y sea un espectáculo visual.
+  - **Sin saltos bruscos:** ahora la ventana tarda en capturarse (~100 ms en gama media), y por eso a veces el primer fotograma llega tarde y la ventana pega un salto. La captura tiene que estar lista antes de que empiece a moverse, y el paso entre la ventana real y la nuestra no se debe notar.
+  - **Como de serie:** mismos muelles, tiempos, esquinas y sombras que HyperOS, para que nadie note que es un módulo.
+  - **Un espectáculo:** más física y más luz en los estilos (sobre todo en Profundidad), sin perder fluidez en móviles de gama media.
 - [ ] **Recarga en caliente (libxposed API 102):** que una actualización del módulo y los interruptores de función se apliquen sin reiniciar el launcher ni la interfaz del sistema.
   - El módulo ya se carga con la API 102; falta que sepa "desmontarse": parar sus hilos, quitar sus listeners y volver a instalar los hooks con el código nuevo.
   - Es lo más delicado de la lista: si se deja algo a medias, se cae la interfaz. Saldrá primero en una beta.
@@ -40,13 +44,13 @@ Ideas apuntadas el 11-11-2026. Están sin empezar y sin orden fijo. Antes de hac
 - [ ] **Zoom suave al desbloquear:** el escritorio entra con una escala ligera, sin animar cada icono.
 
 ### Funciones
-- [x] **Lista de apps excluidas del genio:** las apps elegidas se abren y se cierran con la animación de HyperOS. Se aplica al momento. *Hecho, sin publicar todavía.* Falta lo mismo para la cortina de la interfaz del sistema.
+- [x] **Lista de apps excluidas del genio:** las apps elegidas se abren y se cierran con la animación de HyperOS. Se aplica al momento. *Publicado en la 2.1.0.* Falta lo mismo para la cortina de la interfaz del sistema.
 - [ ] **Pausa automática:** los efectos pesados se apagan solos con el ahorro de batería, en juegos (Game Turbo) o con el móvil caliente.
 - [ ] **Vibración sutil** sincronizada con las animaciones: cuando el genio aterriza en el icono, cuando rebota una carpeta, cuando cambia la pila de widgets.
-- [x] **Editor visual del muelle:** una gráfica animada de la curva mientras mueves Velocidad y Rebote, con un móvil en miniatura que abre una ventana con ese muelle. *Hecho, sin publicar todavía.*
+- [x] **Editor visual del muelle:** una gráfica animada de la curva mientras mueves Velocidad y Rebote, con un móvil en miniatura que abre una ventana con ese muelle. *Publicado en la 2.1.0.*
 - [ ] **Tile en los ajustes rápidos** para activar o desactivar HyperSpring y reiniciar el launcher.
-- [x] **Aviso de versión nueva:** consulta las releases de GitHub (se puede desactivar), y descarga e instala desde la app. *Hecho, sin publicar todavía.*
-- [x] **Novedades al actualizar:** al abrir la app tras actualizarla, una pantalla animada con lo nuevo. *Hecho, sin publicar todavía.*
+- [x] **Aviso de versión nueva:** consulta las releases de GitHub (se puede desactivar), y descarga e instala desde la app. *Publicado en la 2.1.0.*
+- [x] **Novedades al actualizar:** al abrir la app tras actualizarla, una pantalla animada con lo nuevo. *Publicado en la 2.1.0.*
 
 ### La app
 - [ ] **Interfaz renovada, muy animada**, como las webs modernas: entradas escalonadas, animaciones al desplazarse, transiciones compartidas entre pantallas y microinteracciones en cada control. Siempre a 60 fps en gama media y respetando el ajuste del sistema que quita las animaciones.
@@ -65,6 +69,7 @@ Ideas que estaban en la lista y se han quitado, con el motivo:
 - **Más estilos de recientes (abanico, pila 3D).** Lo que pedía la gente era poder apagar el doblado, y eso ya está (**Inicio → Recientes que se doblan**).
 
 ## Hecho
+- [x] 2.1.0: estilo Profundidad (la ventana como una hoja rígida que se inclina, con estela de movimiento), selector de estilo en menú desplegable, editor visual del muelle, apps sin genio, actualizaciones desde la app y app rediseñada. Detalles en el CHANGELOG.
 - [x] 2.0.0: libxposed API 102 con una fachada propia de hooks y dos motores (el antiguo, API 93, sigue como APK aparte). Perfiles de un toque (Suave, Estilo iOS, Rápido, Rendimiento). Exportar e importar ajustes. La tarjeta de compatibilidad dice con qué API se ha cargado el módulo. Los deslizadores llegan al launcher sin reiniciarlo.
 - [x] 1.0.3: genio más fluido y más parecido a la animación de serie de HyperOS (hilos en todos los núcleos, dibujo en cada refresco con predicción, color de la app al abrir, aterrizaje en el icono como MIUI). Detalles en el CHANGELOG.
 - [x] 1.0.2: el cristal del centro de control dejaba de funcionar al cabo de un rato. Las tarjetas de recientes ya solo se doblan al moverlas con el dedo.
