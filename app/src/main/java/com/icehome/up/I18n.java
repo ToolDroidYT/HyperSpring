@@ -123,6 +123,18 @@ final class I18n {
                 "On: the top stays fixed and the bottom bends, like a stage curtain. Off: the middle bends, like a drape.");
         i("icehome_folder_blur", "Blur",
                 "How much the content behind an open folder is blurred, in dp.");
+        i("icehome_folder_quality", "Glass quality",
+                "How sharp the background seen through the glass is, in %. Higher looks finer but uses more memory; on modest phones, 50–67 %.");
+        i("icehome_folder_lens", "Edge thickness",
+                "Width of the liquid-glass lens along the edge, in dp. 0 removes it and leaves only the thin rim.");
+        i("icehome_folder_refr", "Refraction",
+                "How much the lens bends the background inwards, in dp. Higher looks like thicker glass.");
+        i("icehome_folder_chroma", "Color dispersion",
+                "Rainbow-like color split in the corners, like a prism. 0 removes it.");
+        i("icehome_folder_light", "Edge shine",
+                "Light the lens edge catches from the top left.");
+        i("icehome_folder_glow", "Touch glow",
+                "When you touch a folder, a soft light follows your finger and the rim lights up near it. 0 turns it off.");
 
         i("telon_on", "Curtain when switching screens",
                 "Inside an app, the window coming in or going out tilts with its speed and the one below blurs. Applies after restarting System UI.");

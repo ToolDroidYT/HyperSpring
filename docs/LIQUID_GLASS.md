@@ -30,7 +30,8 @@ Receta probada en HyperOS 3 (centro de control y carpetas). Código: `GlassShade
 
 ## 4b. Carpetas con lente (2.2.0)
 - Las carpetas usan el mismo `cc/GlassShader` que el centro de control (se borró la copia antigua sin lente).
-- Lente del borde: 22 dp de alto (máx. ⅓ del lado corto), 30 dp de desplazamiento (escalado igual), dispersión 1,2, luz de la lente 0,10. Constantes `LIQUID_*` en `GlassFolder`.
+- Lente del borde: 22 dp de alto (máx. ⅓ del lado corto), 30 dp de desplazamiento (escalado igual), dispersión 1,2, luz de la lente 0,10. Desde la 2.5.0 son deslizadores (`icehome_folder_lens`, `_refr`, `_chroma`, `_light`, `_quality`) que `Tune.reload` copia a `GlassFolder`.
+- Brillo al tocar (2.5.0, `icehome_folder_glow`): hook de `ItemIcon.onTouchEvent` (FolderIcon no declara ninguno), sube hasta la carpeta y dibuja un degradado radial bajo el dedo + canto encendido cerca; sin consumir el toque.
 - El interior sigue el ajuste "Desenfoque" de carpetas (`icehome_folder_blur`); con 0 el fondo se ve nítido y solo el borde lo dobla.
 
 ## 5. Siguiente proyecto

@@ -10,8 +10,8 @@ android {
         applicationId = "com.icehome.up"
         minSdk = 30
         targetSdk = 35
-        versionCode = 51
-        versionName = "2.2.0"
+        versionCode = 52
+        versionName = "2.5.0"
     }
 
     buildTypes {

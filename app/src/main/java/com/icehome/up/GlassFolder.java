@@ -63,7 +63,7 @@ final class GlassFolder {
      * Con texturas avanzadas: el interior muestra el fondo de pantalla con un desenfoque propio,
      * algo menor que el del sistema, para que se vea cómo el canto lo dobla.
      */
-    static final float FOLDER_BLUR_DP = 6f, SAMPLE_DP = 1.5f;
+    static final float FOLDER_BLUR_DP = 6f;
     static final float MAGNIFY = 0.035f;                // lupa leve en el interior
     /** Canto iluminado con el color de lo que hay detrás. */
     static final float TINT_RIM_DP = 0.8f, GLOW_DP = 0f, TINT_RIM_GAIN = 1.0f;
@@ -74,10 +74,24 @@ final class GlassFolder {
      * esquinas los colores se separan un poco, como en un prisma. La lente no pasa de un tercio
      * del lado corto, para que en las carpetas pequeñas no se coma el centro; el desplazamiento
      * se reduce en la misma proporción.
+     *
+     * Los valores vienen de los deslizadores de la app (Tune.reload los pone aquí); estos son los
+     * de por defecto. volatile: los escribe el receptor de ajustes y los lee el dibujo.
      */
-    static final float LIQUID_H_DP = 22f, LIQUID_AMT_DP = 30f, LIQUID_CHROMA = 1.2f;
+    static volatile float liquidH = 22f, liquidAmt = 30f, liquidChroma = 1.2f;
     /** Brillo de la lente con cristal líquido: más que el canto fino para que se note el volumen. */
-    static final float LIQUID_LIGHT = 0.10f;
+    static volatile float liquidLight = 0.10f;
+    /**
+     * Calidad (25–100 %): cuántos dp de pantalla resume cada píxel del fondo que usa el cristal.
+     * 100 % = 1 dp por muestra (lo más nítido); 67 % ≈ 1,5 dp (lo de siempre); 25 % = 4 dp.
+     */
+    static volatile float quality = 67f;
+    /** Brillo al tocar (0 = sin): una luz suave bajo el dedo y el canto que se enciende cerca. */
+    static volatile float touchGlow = 1f;
+
+    private static float sampleDp() {
+        return 100f / Math.max(25f, Math.min(100f, quality));
+    }
     static final int VEIL_TOP_GLASS = 0x0C, VEIL_BOTTOM_GLASS = 0x00;
 
     private static boolean shaderBroken;
@@ -132,6 +146,49 @@ final class GlassFolder {
                         apply((View) p.thisObject);
                     }
                 });
+        // Brillo al tocar: se mira el dedo antes de que la carpeta reciba el toque (sin quitarle
+        // nada: no se consume el evento, el launcher lo sigue gestionando igual).
+        // FolderIcon no declara dispatchTouchEvent: se busca subiendo por sus clases del launcher
+        // el primer método de toque que sí declare, y se filtra para quedarse solo con carpetas.
+        try {
+            final Class<?> fi = folderIcon;
+            Method hooked = null;
+            String[] names = {"dispatchTouchEvent", "onInterceptTouchEvent", "onTouchEvent"};
+            for (Class<?> c = folderIcon; hooked == null && c != null
+                    && !c.getName().startsWith("android."); c = c.getSuperclass()) {
+                for (String n : names) {
+                    for (Method m : XposedHelpers.declaredMethods(c)) {
+                        if (m.getName().equals(n) && m.getParameterCount() == 1
+                                && m.getParameterTypes()[0] == android.view.MotionEvent.class) {
+                            hooked = m;
+                            break;
+                        }
+                    }
+                    if (hooked != null) break;
+                }
+            }
+            if (hooked == null) throw new NoSuchMethodException("toque");
+            XposedBridge.hookMethod(hooked, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam p) {
+                    // En las carpetas grandes cada app de dentro es su propio icono y se queda el
+                    // toque: se busca la carpeta subiendo unos pocos padres.
+                    if (touchGlow <= 0f) return;
+                    Object v = p.thisObject;
+                    for (int i = 0; i < 6 && v instanceof View; i++) {
+                        if (fi.isInstance(v)) {
+                            touch((View) v, (android.view.MotionEvent) p.args[0]);
+                            return;
+                        }
+                        v = ((View) v).getParent();
+                    }
+                }
+            });
+            XposedBridge.log("IceHome: brillo al tocar en " + hooked.getDeclaringClass().getSimpleName()
+                    + "." + hooked.getName());
+        } catch (Throwable t) {
+            XposedBridge.log("IceHome: sin brillo al tocar las carpetas");
+        }
         // Desplazamiento del fondo entre páginas (lo fija el launcher): para saber qué hay debajo.
         try {
             XposedHelpers.findAndHookMethod(android.app.WallpaperManager.class, "setWallpaperOffsets",
@@ -171,6 +228,39 @@ final class GlassFolder {
             g.invalidateSelf();
         } catch (Throwable t) {
             XposedBridge.log(t);
+        }
+    }
+
+    /** Pasa el dedo al cristal de la carpeta: dónde está y si se enciende o se apaga el brillo. */
+    private static void touch(View folder, android.view.MotionEvent e) {
+        try {
+            if (touchGlow <= 0f) return;
+            View bg = (View) mIconImageView.invoke(folder);
+            Glass g = bg == null ? null : GLASS.get(bg);
+            if (g == null) return;
+            // Del dedo en pantalla al sistema del fondo de la carpeta (que puede estar encogido
+            // por el hundido del icono: por eso se divide por la escala acumulada).
+            int[] at = new int[2];
+            bg.getLocationOnScreen(at);
+            float[] sc = chainScale(bg);
+            float x = (e.getRawX() - at[0]) / Math.max(sc[0], 0.01f);
+            float y = (e.getRawY() - at[1]) / Math.max(sc[1], 0.01f);
+            switch (e.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    g.press(x, y, true);
+                    break;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    g.press(x, y, g.glowTarget > 0f);
+                    break;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    g.press(x, y, false);
+                    break;
+                default:
+                    break;
+            }
+        } catch (Throwable ignored) {
+            // Nunca romper el toque del launcher por un adorno.
         }
     }
 
@@ -214,7 +304,8 @@ final class GlassFolder {
             int sw = Math.max(dm.widthPixels, 1), sh = Math.max(dm.heightPixels, 1);
             float screenPerSrc = Math.max((float) sw / b.getWidth(), (float) sh / b.getHeight());
             float blurDp = Tune.get(ctx, "icehome_folder_blur");
-            wall = GlassShader.shrinkBlur(b, screenPerSrc, SAMPLE_DP * dm.density, blurDp * dm.density);        } catch (Throwable t) {
+            wall = GlassShader.shrinkBlur(b, screenPerSrc, sampleDp() * dm.density, blurDp * dm.density);
+        } catch (Throwable t) {
             wall = null;
         }
     }
@@ -263,6 +354,62 @@ final class GlassFolder {
         private boolean blur;
         private float radius;
         private int alpha = 255;
+        // Brillo al tocar: posición del dedo, intensidad actual (0..1) y a la que va.
+        private final Paint glowFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint glowRim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float glowX, glowY, glow;
+        float glowTarget;
+        private android.animation.ValueAnimator glowAnim;
+
+        /** El dedo se mueve, baja (on) o se levanta (off). Se enciende rápido y se apaga despacio. */
+        void press(float x, float y, boolean on) {
+            glowX = x;
+            glowY = y;
+            float target = on ? 1f : 0f;
+            if (target != glowTarget) {
+                glowTarget = target;
+                if (glowAnim != null) glowAnim.cancel();
+                glowAnim = android.animation.ValueAnimator.ofFloat(glow, target);
+                glowAnim.setDuration(on ? 160 : 520);
+                glowAnim.setInterpolator(new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f));
+                glowAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override
+                    public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        glow = (Float) a.getAnimatedValue();
+                        invalidateSelf();
+                    }
+                });
+                glowAnim.start();
+            }
+            if (glow > 0f) invalidateSelf();
+        }
+
+        /**
+         * Una luz suave bajo el dedo (como en el cristal líquido de iOS 26) y el canto que se
+         * enciende cerca del dedo. Formas con antialias propio, sin clipPath (que dentaría).
+         */
+        private void drawGlow(Canvas canvas, float r) {
+            float k = glow * Math.min(1.5f, touchGlow);
+            if (k <= 0.01f) return;
+            float w = box.width(), h = box.height();
+            float reach = Math.max(w, h);
+            float x = Math.max(box.left, Math.min(box.right, box.left + glowX));
+            float y = Math.max(box.top, Math.min(box.bottom, box.top + glowY));
+            int core = white(Math.round(0x3A * k * alpha / 255f));
+            glowFill.setShader(new RadialGradient(x, y, Math.max(1f, Math.min(reach * 0.55f, 120f * density)),
+                    new int[]{core, white(Math.round(0x14 * k * alpha / 255f)), white(0)},
+                    new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(box, r, r, glowFill);
+            float sw = 1.4f * density;
+            glowRim.setStyle(Paint.Style.STROKE);
+            glowRim.setStrokeWidth(sw);
+            glowRim.setShader(new RadialGradient(x, y, Math.max(1f, Math.min(reach * 0.7f, 160f * density)),
+                    new int[]{white(Math.round(0xE6 * Math.min(1f, k) * alpha / 255f)), white(0)},
+                    null, Shader.TileMode.CLAMP));
+            RectF edge = new RectF(box.left + sw / 2f, box.top + sw / 2f, box.right - sw / 2f, box.bottom - sw / 2f);
+            float er = Math.max(0f, r - sw / 2f);
+            canvas.drawRoundRect(edge, er, er, glowRim);
+        }
 
         Glass(View host) {
             this.host = host;
@@ -366,6 +513,7 @@ final class GlassFolder {
             float er = Math.max(0f, r - rw / 2f);
             rim.setAlpha(lens ? 0 : alpha);
             canvas.drawRoundRect(edge, er, er, rim);
+            drawGlow(canvas, r);
         }
 
         /** Fondo, refracción y canto teñido. Devuelve false si no hay lente (sin fondo o sin AGSL). */
@@ -418,11 +566,12 @@ final class GlassFolder {
                 rs.setFloatUniform("glow", GLOW_DP * density);
                 rs.setFloatUniform("sat", GLASS_SAT);
                 rs.setFloatUniform("rimGain", TINT_RIM_GAIN);
-                float lensH = Math.min(LIQUID_H_DP * density, Math.min(w, h) / 3f);
+                float want = liquidH * density;
+                float lensH = Math.min(want, Math.min(w, h) / 3f);
                 rs.setFloatUniform("refrH", lensH);
-                rs.setFloatUniform("refrAmt", LIQUID_AMT_DP * density * lensH / (LIQUID_H_DP * density));
-                rs.setFloatUniform("chroma", LIQUID_CHROMA);
-                rs.setFloatUniform("light", LIQUID_LIGHT);
+                rs.setFloatUniform("refrAmt", want > 0f ? liquidAmt * density * lensH / want : 0f);
+                rs.setFloatUniform("chroma", liquidChroma);
+                rs.setFloatUniform("light", liquidLight);
                 rs.setFloatUniform("active", 0f);
                 refract.setShader(rs);
                 refract.setAlpha(alpha);

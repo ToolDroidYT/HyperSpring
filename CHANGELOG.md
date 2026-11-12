@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.0
+
+**New**
+- **Liquid glass sliders** in Desktop → Folders, applied right away without restarting the launcher:
+  - **Glass quality** (25–100 %): how sharp the background seen through the glass is. Lower uses less memory.
+  - **Edge thickness** (0–40 dp): width of the liquid-glass lens along the edge. 0 leaves only the thin rim.
+  - **Refraction** (0–60 dp): how much the lens bends the background inwards.
+  - **Color dispersion** (0–3): the rainbow split in the corners.
+  - **Edge shine** (0–0.3): light the lens edge catches from the top left.
+- **Touch glow on folders.** Touch a folder (or an app inside a large folder) and a soft light appears under your finger, follows it, and the rim lights up near it. It switches on quickly and fades out slowly when you lift your finger. Its strength has its own slider (**Touch glow**, 0 turns it off). It never takes the touch from the launcher.
+
 ## 2.2.0
 
 **New**
