@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0
 
 **New**
 - **Depth style for opening and closing apps.** The normal HyperOS animation, but the window behaves like a rigid sheet with physics that tilts back, seen in real perspective. A genie that rotates instead of deforming.
