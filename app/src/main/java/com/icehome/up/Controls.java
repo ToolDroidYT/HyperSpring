@@ -261,7 +261,10 @@ final class Controls {
         /** Desde la fila o el propio interruptor: cambia y avisa. */
         void toggle(boolean user) {
             setChecked(!checked, true);
-            if (user) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            // Android 14+ tiene una vibración distinta para encender y para apagar: se nota sin mirar.
+            if (user) performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 34
+                    ? (checked ? HapticFeedbackConstants.TOGGLE_ON : HapticFeedbackConstants.TOGGLE_OFF)
+                    : HapticFeedbackConstants.KEYBOARD_TAP);
             if (listener != null) listener.onChange(checked);
         }
 

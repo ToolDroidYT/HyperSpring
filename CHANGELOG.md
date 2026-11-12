@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.0
+
+**New**
+- **Liquid glass folders on the home screen.** Folders now use the same lens as the control center: near the edge the wallpaper bends inwards like thick glass, with a hint of rainbow in the corners and a brighter lens highlight. Small folders get a proportionally smaller lens so the middle stays clear. Needs Android 13+ and a static wallpaper, as before.
+- **Home as a bento grid.** A status pill on top (whether the module is active in the launcher and System UI), then the features as glass tiles: a wide one for the genie and two columns for the rest. Tap a tile to switch it, long-press to flip it and read what it does. Icons light up with a little pop when switched on.
+- **Liquid-glass tab change.** Switching tabs, the new page grows from the tab you tapped behind a refracting glass rim that pushes the old page away.
+- **Subpages open like HyperOS setup.** The old page dissolves (blur and fade), a soft light circle opens where you tapped, and the new page's cards come out of that circle and slide into place while they focus, one after another.
+- **Hold to restart.** The launcher and System UI restart rows fill up while you hold them, so a stray tap can't restart anything.
+- **Sharper top blur** (twice the samples).
+
+**Changed**
+- Colors back to coral, with flat coral accents instead of multi-hue gradients. App icon and logo redrawn flat coral.
+- Switches use the Android 14 toggle haptics.
+
+**Fixed**
+- Icons and the floating logo no longer get cut off when they bounce or reach the top.
+- Welcome screen: the text no longer slides under the logo when you scroll.
+
 ## 2.1.0
 
 **New**

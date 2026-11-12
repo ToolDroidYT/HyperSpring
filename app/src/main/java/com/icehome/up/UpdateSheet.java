@@ -605,7 +605,7 @@ final class UpdateSheet extends FrameLayout {
         private final RectF rect = new RectF();
         private final java.util.Random rnd = new java.util.Random();
         // Coral, rosa, malva y un poco de blanco para que «brille».
-        private static final int[] COLORS = {0xFFFF6A55, 0xFFE94B7C, 0xFF9C5CF0, 0xFFFF9C8C, 0xFFFFFFFF};
+        private static final int[] COLORS = {0xFFFF8A70, 0xFFF0604D, 0xFFE8668E, 0xFFFFB38A, 0xFFFFFFFF};
 
         Particles(Context c) {
             super(c);

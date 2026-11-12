@@ -20,7 +20,7 @@ import android.view.View;
  * Cómo: graba lo que hay debajo (el contenedor de páginas) en un RenderNode y lo pasa por un
  * desenfoque gaussiano propio en AGSL cuyo radio depende de la altura: grande arriba, cero abajo.
  * Un desenfoque gaussiano se puede separar en dos pasadas (horizontal y luego vertical), así cada
- * píxel lee 17 muestras por pasada en vez de cientos. El desenfoque del sistema
+ * píxel lee 33 muestras por pasada en vez de cientos. El desenfoque del sistema
  * ({@code RenderEffect.createBlurEffect}) no sirve aquí porque usa el mismo radio en toda la zona.
  * <p>
  * Encima, un velo del color del fondo que también se apaga hacia abajo, para que la hora y los
@@ -42,10 +42,12 @@ final class TopBlur extends View {
             + "  float f = clamp(1.0 - coord.y / size.y, 0.0, 1.0);\n"
             + "  float s = maxSigma * f * f * (3.0 - 2.0 * f);\n"
             + "  if (s < 0.4) return sampleAt(coord);\n"
-            + "  float stp = s * 0.45;\n"
+            // 16 muestras por lado, muy juntas (cada 0.24 sigma): sin escalones ni "fantasmas".
+            // Con 8 y separadas el doble se veían copias del contenido en vez de un desenfoque liso.
+            + "  float stp = s * 0.24;\n"
             + "  half4 acc = sampleAt(coord);\n"
             + "  float wsum = 1.0;\n"
-            + "  for (int i = 1; i <= 8; i++) {\n"
+            + "  for (int i = 1; i <= 16; i++) {\n"
             + "    float x = float(i) * stp;\n"
             + "    float w = exp(-0.5 * x * x / (s * s));\n"
             + "    acc += (sampleAt(coord + dir * x) + sampleAt(coord - dir * x)) * half(w);\n"

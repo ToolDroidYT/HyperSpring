@@ -48,7 +48,7 @@ public class SettingsActivity extends Activity {
     int bg, card, pressed, text, text2, text3, accent, onAccent, accentSoft, track, warn;
     /** Acento intenso (interruptores, deslizadores, botón de la presentación) con texto blanco encima. */
     int accentStrong;
-    /** Los cuatro tonos suaves de las manchas del fondo (coral, rosa, malva, salmón). */
+    /** Los cuatro tonos suaves de las manchas del fondo (coral, rosa, salmón, melocotón). */
     int[] vivid;
 
     private final List<Runnable> refreshers = new ArrayList<>();
@@ -66,6 +66,8 @@ public class SettingsActivity extends Activity {
     /** La próxima página que se cree lleva los brillos de color de «Acerca de». */
     private boolean glowNext;
     private int tab;
+    /** El próximo cambio de pestaña va sin la onda de {@link TabReveal} (tras el gesto de atrás). */
+    private boolean noWave;
     /** Páginas abiertas en la pestaña actual (la primera es la raíz). */
     private final List<ScrollView> pages = new ArrayList<>();
 
@@ -221,6 +223,8 @@ public class SettingsActivity extends Activity {
 
     /** Empieza el gesto: decide qué se va a mover. */
     private void startBack(boolean fromLeft) {
+        PushMorph.finish();
+        TabReveal.finish();
         backAnim = null;
         sheetDrag = false;
         if (menuClose != null) {
@@ -265,10 +269,11 @@ public class SettingsActivity extends Activity {
             anim.commit(new PredictiveBack.Done() {
                 @Override
                 public void run() {
+                    noWave = true;                  // el gesto ya ha hecho su propia animación
                     showTab(0, true);
                 }
             });
-            tab = 0;                                // para que syncBack ya sepa que vamos a Inicio
+            tab = 0;                               // para que syncBack ya sepa que vamos a Inicio
         }
         syncBack();
     }
@@ -494,8 +499,9 @@ public class SettingsActivity extends Activity {
     // ---------------------------------------------------------------- colores
     /**
      * Tema fijo de HyperSpring: oscuro, con el coral del icono como color principal y tonos suaves
-     * de su familia (rosa, malva, salmón) para los fondos. No depende del fondo de pantalla (Monet):
-     * la app se ve igual en todos los móviles, como una marca.
+     * de su familia (rosa y naranja) para los fondos. Sin degradados de varios colores: cada
+     * superficie es de un solo tono. No depende del fondo de pantalla (Monet): la app se ve igual
+     * en todos los móviles, como una marca.
      */
     private void palette() {
         bg = 0xFF0E0F13;                        // casi negro, con un punto frío
@@ -510,8 +516,8 @@ public class SettingsActivity extends Activity {
         track = 0xFF3A3B44;
         warn = 0xFF33242A;
         accentStrong = 0xFFEF6A57;              // coral del icono, algo más suave: interruptores, botones
-        // Manchas de los fondos: coral, rosa, malva y salmón claro. Suaves, de la misma familia.
-        vivid = new int[]{0xFFFF8070, 0xFFE8668E, 0xFFB474E0, 0xFFFF9E86};
+        // Manchas de los fondos: coral, rosa, salmón y melocotón. Rosas y naranjas, sin malva.
+        vivid = new int[]{0xFFFF8070, 0xFFE8668E, 0xFFFF9E86, 0xFFFFB38A};
         // Tarjetas un poco translúcidas: se adivina el fondo que pasa por detrás.
         card = (card & 0x00FFFFFF) | 0xD9000000;
     }
@@ -524,6 +530,7 @@ public class SettingsActivity extends Activity {
 
     // ---------------------------------------------------------------- navegación
     private void showTab(int index, boolean animate) {
+        TabReveal.finish();                     // un cambio anterior a medias se termina ya
         tab = index;
         refreshers.clear();
         logText = null;
@@ -546,9 +553,23 @@ public class SettingsActivity extends Activity {
         }
         pages.add(p);
         stack.addView(p);
+        // Cambio de pestaña: la nueva se abre en círculo desde su botón de la barra (TabReveal).
+        boolean wave = animate && !noWave && !old.isEmpty() && stack.getWidth() > 0 && bar.getWidth() > 0;
+        noWave = false;
         // Entrada escalonada: título, explicación y cada tarjeta (y sus filas) una detrás de otra.
-        if (animate) Motion.cascade((ViewGroup) p.getChildAt(0), 0, px(22));
-        for (ScrollView o : old) stack.removeView(o);
+        if (animate) Motion.cascade((ViewGroup) p.getChildAt(0), wave ? 90 : 0, px(22));
+        if (wave) {
+            float seg = bar.getWidth() / (float) TAB_ICONS.length;
+            float cx = bar.getX() + seg * (index + 0.5f), cy = bar.getY() + bar.getHeight() / 2f;
+            TabReveal.play(root, stack, old, p, cx, cy, new Runnable() {
+                @Override
+                public void run() {
+                    for (ScrollView o : old) stack.removeView(o);
+                }
+            });
+        } else {
+            for (ScrollView o : old) stack.removeView(o);
+        }
         syncBack();
     }
 
@@ -556,6 +577,31 @@ public class SettingsActivity extends Activity {
         final ScrollView under = pages.get(pages.size() - 1);
         pages.add(p);
         stack.addView(p);
+        // Como en el asistente de HyperOS: lo de antes se disuelve desenfocándose y lo nuevo aparece
+        // enfocándose, elemento a elemento (PushMorph). Solo con Android 12+, que es quien sabe
+        // desenfocar vistas; antes, el deslizamiento lateral de siempre.
+        if (Build.VERSION.SDK_INT >= 31) {
+            under.animate().cancel();
+            // Todo sale de lo que acabas de tocar (si fue hace poco); si no, del centro.
+            float ox = stack.getWidth() / 2f, oy = stack.getHeight() * 0.45f;
+            View src = lastTouch;
+            lastTouch = null;
+            if (src != null && src.isAttachedToWindow() && SystemClock.uptimeMillis() - lastTouchAt < 1500) {
+                int[] a = new int[2], s = new int[2];
+                src.getLocationInWindow(a);
+                stack.getLocationInWindow(s);
+                ox = a[0] - s[0] + src.getWidth() / 2f;
+                oy = a[1] - s[1] + src.getHeight() / 2f;
+            }
+            PushMorph.play(under, (ViewGroup) p, ox, oy, accentStrong, new Runnable() {
+                @Override
+                public void run() {
+                    bar.invalidate();
+                }
+            });
+            syncBack();
+            return;
+        }
         p.setTranslationX(stack.getWidth());
         p.animate().translationX(0f).setDuration(380).setInterpolator(Motion.EXPO_OUT).setUpdateListener(barTick()).start();
         Motion.cascade((ViewGroup) p.getChildAt(0), 110, px(18));
@@ -566,6 +612,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void pop() {
+        PushMorph.finish();
         final ScrollView top = pages.remove(pages.size() - 1);
         ScrollView under = pages.get(pages.size() - 1);
         under.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(EASE).setUpdateListener(barTick()).start();
@@ -669,6 +716,7 @@ public class SettingsActivity extends Activity {
     private ScrollView homeTab() {
         LinearLayout c = column();
         homeCol = c;
+        c.addView(statusPill());
         updateBanner = null;
         // Si la última búsqueda encontró una versión nueva, el aviso sigue ahí aunque no haya red.
         Updates.Release cached = Updates.cached(this);
@@ -731,7 +779,7 @@ public class SettingsActivity extends Activity {
         }
 
         c.addView(label(I18n.t("Funciones", "Features")));
-        c.addView(featuresCard());
+        c.addView(featuresGrid());
 
         c.addView(label(I18n.t("Perfiles", "Presets")));
         LinearLayout pr = card();
@@ -749,15 +797,16 @@ public class SettingsActivity extends Activity {
         c.addView(label(I18n.t("Acciones", "Actions")));
         LinearLayout a = card();
         a.setTag(Motion.CASCADE);
-        a.addView(navRow(Icons.RESTART, I18n.t("Reiniciar launcher", "Restart launcher"),
-                I18n.t("Aplica los cambios de funciones del escritorio", "Applies launcher feature changes"), false, new Runnable() {
+        // Reiniciar se hace manteniendo pulsado: un toque sin querer al hacer scroll no cierra nada.
+        a.addView(holdRow(Icons.RESTART, I18n.t("Reiniciar launcher", "Restart launcher"),
+                I18n.t("Aplica los cambios de funciones del escritorio", "Applies launcher feature changes"), new Runnable() {
             @Override
             public void run() {
                 restart(false);
             }
         }));
-        a.addView(navRow(Icons.RESTART, I18n.t("Reiniciar interfaz del sistema", "Restart System UI"),
-                I18n.t("Telón y centro de control", "Curtain and control center"), false, new Runnable() {
+        a.addView(holdRow(Icons.RESTART, I18n.t("Reiniciar interfaz del sistema", "Restart System UI"),
+                I18n.t("Telón y centro de control", "Curtain and control center"), new Runnable() {
             @Override
             public void run() {
                 restart(true);
@@ -781,6 +830,189 @@ public class SettingsActivity extends Activity {
         }
         return page("HyperSpring", I18n.t("Animaciones y cristal líquido para HyperOS. Toca una función para ver qué hace.",
                 "Animations and liquid glass for HyperOS. Tap a feature to see what it does."), false, c);
+    }
+
+    /**
+     * Funciones de Inicio en rejilla "bento": la principal (el genio) ocupa todo el ancho y las
+     * demás van de dos en dos. Cada baldosa es un interruptor: al tocarla se enciende o se apaga y
+     * se ilumina con el degradado de la marca. Si la mantienes pulsada, se da la vuelta y enseña
+     * qué hace esa función.
+     */
+    private LinearLayout featuresGrid() {
+        Object[][] f = {
+                {Icons.SPARKLE, item(Tune.ITEMS, "icehome_genie_on"), I18n.t("Abrir y cerrar apps", "Opening and closing apps")},
+                {Icons.LAYERS, item(Tune.ITEMS, "icehome_curtain_on"), I18n.t("Recientes que se doblan", "Bending recents")},
+                {Icons.WIDGETS, item(Tune.ITEMS, "icehome_stack_on"), I18n.t("Pila de widgets", "Widget stack")},
+                {Icons.FOLDER, item(Tune.ITEMS, "icehome_folder_morph_on"), I18n.t("Carpetas con muelle", "Springy folders")},
+                {Icons.DROP, item(Tune.ITEMS, "icehome_folder_glass_on"), I18n.t("Carpetas de cristal", "Glass folders")},
+                {Icons.CURTAIN, item(com.icehome.up.telon.Tune.ITEMS, "telon_on"), I18n.t("Telón", "Curtain")},
+                {Icons.SLIDERS, item(com.icehome.up.cc.Tune.ITEMS, "kashiplus_cc_on"), I18n.t("Centro de control de cristal", "Glass control center")},
+        };
+        LinearLayout grid = column();
+        grid.setTag(Motion.CASCADE);                     // las filas entran una a una
+        grid.setClipChildren(false);                     // el giro de una baldosa no se corta
+        grid.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        grid.addView(featureTile(f[0], true), new LinearLayout.LayoutParams(-1, -2));
+        for (int i = 1; i < f.length; i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setClipChildren(false);
+            LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, -1, 1f);
+            a.rightMargin = px(5);
+            row.addView(featureTile(f[i], false), a);
+            LinearLayout.LayoutParams b = new LinearLayout.LayoutParams(0, -1, 1f);
+            b.leftMargin = px(5);
+            if (i + 1 < f.length) row.addView(featureTile(f[i + 1], false), b);
+            else row.addView(new View(this), b);
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+            rlp.topMargin = px(10);
+            grid.addView(row, rlp);
+        }
+        return grid;
+    }
+
+    /** Una baldosa de la rejilla: icono, nombre y estado delante; la explicación detrás. */
+    private View featureTile(Object[] spec, boolean wide) {
+        final Object[] it = (Object[]) spec[1];
+        final String key = (String) it[0];
+        final String title = (String) spec[2];
+        final String about = I18n.desc(it);
+        final FrameLayout tile = new FrameLayout(this);
+        tile.setCameraDistance(9000 * dp);              // perspectiva suave al darle la vuelta
+
+        // Fondo en tres capas: el cristal de siempre, un brillo de color y un borde de luz.
+        // Las dos últimas solo se ven con la función encendida.
+        int r = px(26);
+        GradientDrawable base = round(card, r);
+        GradientDrawable glow = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{
+                (Motion.BRAND[0] & 0x00FFFFFF) | 0x52000000, (Motion.BRAND[1] & 0x00FFFFFF) | 0x2E000000,
+                (Motion.BRAND[2] & 0x00FFFFFF) | 0x14000000});
+        glow.setCornerRadius(r);
+        GradientDrawable edge = round(0, r);
+        edge.setStroke(Math.max(1, px(1)), 0x4DFFFFFF);
+        final Drawable[] lit = {glow, edge};
+        tile.setBackground(new android.graphics.drawable.LayerDrawable(new Drawable[]{base, glow, edge}));
+
+        // Delante.
+        final LinearLayout front = column();
+        front.setPadding(px(16), px(16), px(16), px(16));
+        front.setClipToPadding(false);
+        final ImageView ic = icon((Integer) spec[0], text);
+        front.addView(ic);
+        TextView t = text(title, wide ? 19 : 16, text);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setPadding(0, px(wide ? 14 : 18), 0, 0);
+        t.setMaxLines(2);
+        front.addView(t);
+        if (wide && about != null) {
+            TextView d = text(about, 13.5f, text2);
+            d.setMaxLines(2);
+            d.setEllipsize(TextUtils.TruncateAt.END);
+            d.setLineSpacing(0, 1.12f);
+            d.setPadding(0, px(4), 0, 0);
+            front.addView(d);
+        }
+        final TextView st = text("", 13, text3);
+        st.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        st.setPadding(0, px(6), 0, 0);
+        front.addView(st);
+
+        // Detrás: la explicación. INVISIBLE y no GONE, para que la baldosa mida lo mismo por las
+        // dos caras y no salte el resto al darle la vuelta.
+        final LinearLayout back = column();
+        back.setPadding(px(16), px(16), px(16), px(16));
+        TextView bt = text(title, 14, accent);
+        bt.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        back.addView(bt);
+        TextView bd = text(about != null ? about : "", 13, text);
+        bd.setLineSpacing(0, 1.15f);
+        bd.setPadding(0, px(6), 0, 0);
+        bd.setMaxLines(wide ? 3 : 6);
+        bd.setEllipsize(TextUtils.TruncateAt.END);
+        back.addView(bd);
+        back.setVisibility(View.INVISIBLE);
+        tile.addView(front, new FrameLayout.LayoutParams(-1, -2));
+        tile.addView(back, new FrameLayout.LayoutParams(-1, -1));
+        if (!wide) tile.setMinimumHeight(px(150));
+
+        final boolean[] on = {false}, flipped = {false};
+        final Runnable refresh = new Runnable() {
+            @Override
+            public void run() {
+                on[0] = stored(it) >= 0.5f;
+                paintTile(tile, ic, lit, st, on[0], false);
+            }
+        };
+        refresh.run();
+        refreshers.add(refresh);
+        tile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (flipped[0]) {                       // dada la vuelta: tocar solo la devuelve
+                    flip(tile, front, back, flipped);
+                    return;
+                }
+                on[0] = !on[0];
+                v.performHapticFeedback(Build.VERSION.SDK_INT >= 34
+                        ? (on[0] ? HapticFeedbackConstants.TOGGLE_ON : HapticFeedbackConstants.TOGGLE_OFF)
+                        : HapticFeedbackConstants.KEYBOARD_TAP);
+                paintTile(tile, ic, lit, st, on[0], true);
+                saveToggle(key, on[0]);
+            }
+        });
+        if (about != null) {
+            tile.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    flip(tile, front, back, flipped);
+                    return true;
+                }
+            });
+        }
+        tile.setContentDescription(title);
+        sink(tile);
+        return tile;
+    }
+
+    /** Pinta una baldosa encendida o apagada (con transición si {@code animate}). */
+    private void paintTile(View tile, ImageView ic, final Drawable[] lit, TextView st, boolean on, boolean animate) {
+        lightIcon(ic, on, animate);
+        st.setText(on ? I18n.t("Activado", "On") : I18n.t("Apagado", "Off"));
+        st.setTextColor(on ? accent : text3);
+        tile.setStateDescription(st.getText());
+        int to = on ? 255 : 0;
+        if (!animate) {
+            for (Drawable d : lit) d.setAlpha(to);
+            return;
+        }
+        ValueAnimator va = ValueAnimator.ofInt(lit[0].getAlpha(), to);
+        va.setDuration(360);
+        va.setInterpolator(EASE);
+        va.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                int v = (Integer) a.getAnimatedValue();
+                for (Drawable d : lit) d.setAlpha(v);
+            }
+        });
+        va.start();
+    }
+
+    /** Da la vuelta a una baldosa: gira hasta ponerse de canto, cambia de cara y termina el giro. */
+    private void flip(final View tile, final View front, final View back, final boolean[] flipped) {
+        final boolean toBack = !flipped[0];
+        flipped[0] = toBack;
+        tile.animate().rotationY(toBack ? 90f : -90f).setDuration(150)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator()).withEndAction(new Runnable() {
+            @Override
+            public void run() {
+                front.setVisibility(toBack ? View.INVISIBLE : View.VISIBLE);
+                back.setVisibility(toBack ? View.VISIBLE : View.INVISIBLE);
+                tile.setRotationY(toBack ? -90f : 90f);
+                tile.animate().rotationY(0f).setDuration(340)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f)).start();
+            }
+        }).start();
     }
 
     /** Tarjeta con los interruptores de cada función (Inicio y la presentación). */
@@ -968,6 +1200,7 @@ public class SettingsActivity extends Activity {
         LinearLayout col = column();
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         col.setPadding(0, px(72), 0, px(36));
+        col.setClipToPadding(false);            // el logo flota y gira por encima del margen sin cortarse
         // Logo opaco: el fondo de colores pasa por detrás pero no lo tiñe.
         final ImageView logo = new ImageView(this);
         logo.setImageDrawable(new LogoDrawable(LiveBackground.CORAL, 0xFF));
@@ -1285,11 +1518,13 @@ public class SettingsActivity extends Activity {
         r.setPadding(px(18), px(15), px(16), px(15));
         r.setMinimumHeight(px(64));
         r.setBackground(new RippleDrawable(ColorStateList.valueOf(pressed), null, new ColorDrawable(Color.WHITE)));
+        // Sin esto, el icono se corta en el borde del margen cuando crece o rebota.
+        r.setClipToPadding(false);
         return r;
     }
 
     /**
-     * Icono de una fila: en coral sobre una baldosa coral muy suave. Todas iguales, como en los
+     * Icono de una fila: en el color de acento sobre una baldosa de ese color muy suave. Todas iguales, como en los
      * ajustes de HyperOS con un tema: la lista se ve ordenada y del mismo color que la app.
      * El color que se pasa se ignora.
      */
@@ -1302,6 +1537,266 @@ public class SettingsActivity extends Activity {
         lp.rightMargin = px(14);
         iv.setLayoutParams(lp);
         return iv;
+    }
+
+    /**
+     * Enciende o apaga la baldosa del icono de una función. Encendida, se llena con el degradado
+     * de la marca y el icono pasa a blanco; al cambiar, da un saltito con muelle. Así se ve de un
+     * vistazo qué está activo, sin leer los interruptores.
+     */
+    private void lightIcon(final ImageView iv, boolean on, boolean animate) {
+        android.graphics.drawable.LayerDrawable layers;
+        if (iv.getBackground() instanceof android.graphics.drawable.LayerDrawable) {
+            layers = (android.graphics.drawable.LayerDrawable) iv.getBackground();
+        } else {
+            // Primera vez: debajo, la baldosa suave de siempre; encima, la encendida (invisible).
+            GradientDrawable lit = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    new int[]{Motion.BRAND[0], Motion.BRAND[1]});
+            lit.setCornerRadius(px(11));
+            lit.setAlpha(0);
+            layers = new android.graphics.drawable.LayerDrawable(new Drawable[]{iv.getBackground(), lit});
+            iv.setBackground(layers);
+        }
+        final Drawable lit = layers.getDrawable(1);
+        final Icons glyph = (Icons) iv.getDrawable();
+        final float to = on ? 1f : 0f;
+        if (iv.getTag() instanceof ValueAnimator) ((ValueAnimator) iv.getTag()).cancel();
+        if (!animate) {
+            lit.setAlpha(Math.round(255 * to));
+            glyph.setColor(on ? Color.WHITE : accent);
+            return;
+        }
+        ValueAnimator va = ValueAnimator.ofFloat(lit.getAlpha() / 255f, to);
+        va.setDuration(260);
+        va.setInterpolator(EASE);
+        va.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                float v = (Float) a.getAnimatedValue();
+                lit.setAlpha(Math.round(255 * v));
+                glyph.setColor(Controls.blend(accent, Color.WHITE, v));
+            }
+        });
+        iv.setTag(va);
+        va.start();
+        // Saltito: crece (o se encoge al apagar) y vuelve rebotando.
+        final float peak = on ? 1.18f : 0.88f;
+        iv.animate().scaleX(peak).scaleY(peak).setDuration(110).setInterpolator(EASE).withEndAction(new Runnable() {
+            @Override
+            public void run() {
+                iv.animate().scaleX(1f).scaleY(1f).setDuration(420)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(3f)).start();
+            }
+        }).start();
+    }
+
+    /**
+     * Fila de acción que hay que mantener pulsada (reiniciar). Se llena de izquierda a derecha
+     * mientras aprietas; al completarse vibra y actúa. Si sueltas antes, se vacía. Un toque corto
+     * solo explica qué hacer, con un "no" de lado a lado: así no se reinicia nada sin querer.
+     */
+    private View holdRow(int iconKind, String title, final String sub, final Runnable action) {
+        final LinearLayout r = rowBase();
+        r.addView(icon(iconKind, text));
+        LinearLayout tc = titles(title, sub);
+        r.addView(tc);
+        final TextView subView = (TextView) tc.getChildAt(1);
+        GradientDrawable shape = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{
+                (Motion.BRAND[0] & 0x00FFFFFF) | 0x66000000, (Motion.BRAND[1] & 0x00FFFFFF) | 0x66000000});
+        // ClipDrawable dibuja solo una parte de la forma: el "nivel" (0 a 10000) es cuánto se ve.
+        final android.graphics.drawable.ClipDrawable fill = new android.graphics.drawable.ClipDrawable(
+                shape, Gravity.LEFT, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+        fill.setLevel(0);
+        r.setForeground(fill);
+
+        final ValueAnimator.AnimatorUpdateListener level = new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                fill.setLevel((Integer) a.getAnimatedValue());
+            }
+        };
+        final ValueAnimator[] running = {null};
+        final long[] downAt = {0};
+        final Runnable restoreSub = new Runnable() {
+            @Override
+            public void run() {
+                subView.setText(sub);
+                subView.setTextColor(text2);
+            }
+        };
+        r.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(final View v, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: {
+                        downAt[0] = SystemClock.uptimeMillis();
+                        v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(140).setInterpolator(EASE).start();
+                        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                        if (running[0] != null) running[0].cancel();
+                        int from = fill.getLevel();
+                        ValueAnimator va = ValueAnimator.ofInt(from, 10000);
+                        va.setDuration(Math.max(1, Math.round(900 * (10000 - from) / 10000f)));
+                        va.setInterpolator(new android.view.animation.LinearInterpolator());
+                        va.addUpdateListener(level);
+                        va.addListener(new android.animation.AnimatorListenerAdapter() {
+                            boolean cancelled;
+
+                            @Override
+                            public void onAnimationCancel(android.animation.Animator a) {
+                                cancelled = true;
+                            }
+
+                            @Override
+                            public void onAnimationEnd(android.animation.Animator a) {
+                                if (cancelled) return;
+                                v.performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+                                v.animate().scaleX(1f).scaleY(1f).setDuration(380)
+                                        .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+                                action.run();
+                                // Lleno un momento (se ve que ha ido) y luego se vacía despacio.
+                                ValueAnimator out = ValueAnimator.ofInt(10000, 0);
+                                out.setStartDelay(350);
+                                out.setDuration(500);
+                                out.setInterpolator(EASE);
+                                out.addUpdateListener(level);
+                                running[0] = out;
+                                out.start();
+                            }
+                        });
+                        running[0] = va;
+                        va.start();
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL: {
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(380)
+                                .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+                        ValueAnimator cur = running[0];
+                        if (cur == null || !cur.isRunning() || cur.getStartDelay() > 0) return true;
+                        // Soltó antes de llenarse: se vacía con suavidad.
+                        cur.cancel();
+                        ValueAnimator back = ValueAnimator.ofInt(fill.getLevel(), 0);
+                        back.setDuration(280);
+                        back.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                        back.addUpdateListener(level);
+                        running[0] = back;
+                        back.start();
+                        if (e.getActionMasked() == MotionEvent.ACTION_UP && SystemClock.uptimeMillis() - downAt[0] < 300) {
+                            v.performHapticFeedback(HapticFeedbackConstants.REJECT);
+                            subView.setText(I18n.t("Mantén pulsado para reiniciar", "Press and hold to restart"));
+                            subView.setTextColor(accent);
+                            subView.removeCallbacks(restoreSub);
+                            subView.postDelayed(restoreSub, 2200);
+                            float s = px(5);
+                            android.animation.ObjectAnimator.ofFloat(v, View.TRANSLATION_X, 0, -s, s, -s / 2, s / 2, 0)
+                                    .setDuration(320).start();
+                        }
+                        return true;
+                    }
+                    default:
+                        return true;
+                }
+            }
+        });
+        // Con TalkBack no hay "mantener": el doble toque de accesibilidad actúa directamente.
+        r.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                action.run();
+            }
+        });
+        return r;
+    }
+
+    /** ¿Ese proceso ha cargado HyperSpring desde que se encendió el móvil? */
+    private boolean seenSinceBoot(String key) {
+        String st = state(key);
+        if (st == null) return false;
+        try {
+            return Long.parseLong(st.split("\\|")[0]) >= bootTime();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Píldora de cristal en Inicio: dice si HyperSpring está funcionando, con un punto que late.
+     * Verde menta si está en el launcher y en la interfaz; ámbar si falta alguno.
+     */
+    private View statusPill() {
+        boolean l = seenSinceBoot("launcher_seen"), s = seenSinceBoot("systemui_seen");
+        int color = l && s ? 0xFF6FD99A : 0xFFFFB547;
+        // Textos cortos: la píldora tiene que caber en una línea incluso con letra grande.
+        String msg = l && s ? I18n.t("Activo · launcher e interfaz", "Active · launcher & System UI")
+                : l ? I18n.t("Activo solo en el launcher", "Active in launcher only")
+                : s ? I18n.t("Activo solo en la interfaz", "Active in System UI only")
+                : I18n.t("Esperando a LSPosed", "Waiting for LSPosed");
+        LinearLayout p = new LinearLayout(this);
+        p.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable g = round(0x1CFFFFFF, px(18));
+        g.setStroke(Math.max(1, px(0.7f)), 0x1FFFFFFF);
+        p.setBackground(g);
+        p.setPadding(px(10), px(7), px(14), px(7));
+        p.addView(new PulseDot(this, color, dp), new LinearLayout.LayoutParams(px(20), px(20)));
+        TextView t = text(msg, 13, text);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setMaxLines(1);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-2, -2);
+        tlp.leftMargin = px(6);
+        p.addView(t, tlp);
+
+        LinearLayout wrap = new LinearLayout(this);            // para que la píldora no ocupe todo el ancho
+        wrap.setPadding(px(8), px(14), px(8), px(2));
+        wrap.addView(p, new LinearLayout.LayoutParams(-2, -2));
+        return wrap;
+    }
+
+    /** Punto de estado con una onda que se expande y se apaga, sin parar, mientras se ve. */
+    private static final class PulseDot extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final int color;
+        private final float dp;
+        private final ValueAnimator loop = ValueAnimator.ofFloat(0f, 1f);
+        private float t;
+
+        PulseDot(android.content.Context c, int color, float dp) {
+            super(c);
+            this.color = color;
+            this.dp = dp;
+            loop.setDuration(1600);
+            loop.setRepeatCount(ValueAnimator.INFINITE);
+            loop.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            loop.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    t = (Float) a.getAnimatedValue();
+                    invalidate();
+                }
+            });
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            loop.start();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            loop.cancel();                                      // fuera de pantalla no gasta nada
+            super.onDetachedFromWindow();
+        }
+
+        @Override
+        protected void onDraw(android.graphics.Canvas c) {
+            float cx = getWidth() / 2f, cy = getHeight() / 2f, r = 4f * dp;
+            paint.setColor(color);
+            paint.setAlpha(Math.round(130 * (1f - t)));
+            c.drawCircle(cx, cy, r * (1f + 1.4f * t), paint);
+            paint.setAlpha(255);
+            c.drawCircle(cx, cy, r, paint);
+        }
     }
 
     private LinearLayout titles(String title, String sub) {
@@ -1375,9 +1870,21 @@ public class SettingsActivity extends Activity {
         return r;
     }
 
+    /** Guarda un interruptor de función y, si hace falta, avisa de que se aplica al reiniciar. */
+    private void saveToggle(String key, boolean on) {
+        write(key, on ? "1" : "0");
+        // Las funciones se enganchan al arrancar el proceso: ofrecer el reinicio.
+        if (key.startsWith("icehome_") && key.endsWith("_on") && !key.equals("icehome_press_on")) {
+            pendingRestart(false);
+        } else if (key.equals("telon_on")) {
+            pendingRestart(true);
+        }
+    }
+
     private View toggleRow(int iconKind, final Object[] it, String title) {
         LinearLayout r = rowBase();
-        if (iconKind >= 0) r.addView(icon(iconKind, text));
+        final ImageView ic = iconKind >= 0 ? icon(iconKind, text) : null;
+        if (ic != null) r.addView(ic);
         LinearLayout tc = titles(title, null);
         final TextView d = desc(it);
         if (d != null) tc.addView(d);
@@ -1390,7 +1897,9 @@ public class SettingsActivity extends Activity {
         final Runnable refresh = new Runnable() {
             @Override
             public void run() {
-                t.setChecked(stored(it) >= 0.5f, false);
+                boolean on = stored(it) >= 0.5f;
+                t.setChecked(on, false);
+                if (ic != null) lightIcon(ic, on, false);
             }
         };
         refresh.run();
@@ -1398,13 +1907,8 @@ public class SettingsActivity extends Activity {
         t.setOnChange(new Controls.Toggle.OnChange() {
             @Override
             public void onChange(boolean on) {
-                write(key, on ? "1" : "0");
-                // Las funciones se enganchan al arrancar el proceso: ofrecer el reinicio.
-                if (key.startsWith("icehome_") && key.endsWith("_on") && !key.equals("icehome_press_on")) {
-                    pendingRestart(false);
-                } else if (key.equals("telon_on")) {
-                    pendingRestart(true);
-                }
+                if (ic != null) lightIcon(ic, on, true);
+                saveToggle(key, on);
             }
         });
         r.setOnClickListener(new View.OnClickListener() {
@@ -2214,6 +2718,10 @@ public class SettingsActivity extends Activity {
         restartToast.show();
     }
 
+    /** Lo último que se pulsó: si abre una página, la transición sale de ahí (ver push). */
+    private View lastTouch;
+    private long lastTouchAt;
+
     /** Hundimiento al pulsar: la vista se encoge un poco y vuelve con un pequeño rebote. */
     void sink(View v) {
         v.setOnTouchListener(new View.OnTouchListener() {
@@ -2221,6 +2729,8 @@ public class SettingsActivity extends Activity {
             public boolean onTouch(View v, MotionEvent e) {
                 switch (e.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
+                        lastTouch = v;
+                        lastTouchAt = SystemClock.uptimeMillis();
                         v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(140).setInterpolator(EASE).start();
                         break;
                     case MotionEvent.ACTION_UP:

@@ -432,6 +432,14 @@ final class Onboarding extends FrameLayout {
             introParts.add(f);
         }
         ScrollView sv = scroll(c);
+        // El logo se dibuja en su propia capa, encima de la página: si la bienvenida se desplaza
+        // (pantallas pequeñas o letra grande), el logo tiene que subir con ella o tapa el título.
+        sv.setOnScrollChangeListener(new OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(View v, int x, int y, int ox, int oy) {
+                logo.setTranslationY(-y);
+            }
+        });
         // Fondo propio de manchas suaves (coral, rosa, malva) que recorren la pantalla: al pasar al
         // primer paso, la bienvenida se encoge como una tarjeta con este fondo dentro.
         new LiveBackground(act.bg, act.vivid, 0.36f, true).attachTo(sv);

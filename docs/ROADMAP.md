@@ -5,7 +5,9 @@ What is planned for the next versions. Plans may change. Suggestions are welcome
 The bar for getting on this list: a fair number of people will use it, it can be maintained when HyperOS changes, and it costs no battery or smoothness to those who don't use it. A flashy effect that gets turned off after two days doesn't make it.
 
 ## Known bugs
-- None open right now. If you find one, open an issue with the log (**About → Copy log**) and your settings (**About → Export settings**).
+- [x] **Welcome** (fixed in 2.2.0): on the first screen, the text slides under the icon. Idea: the icon pushes the letters as it comes down, and they blur until they disappear.
+- [x] **About** (fixed in 2.2.0): the floating icon gets cut off when it reaches the top.
+- If you find one, open an issue with the log (**About → Copy log**) and your settings (**About → Export settings**).
 
 ## Next
 - [ ] **Opening and closing apps, better than ever:** polish the animation until it feels like Xiaomi made it and is a visual treat.

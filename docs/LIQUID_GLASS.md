@@ -28,5 +28,10 @@ Receta probada en HyperOS 3 (centro de control y carpetas). Código: `GlassShade
 - App de ajustes: SharedPreferences servidas por `PrefsProvider`; SystemUI y el launcher las releen al recibir el aviso de `Remote.send` y se aplican al momento. Botones de reinicio de SystemUI y launcher sin root (`Remote.java`).
 - Ajustes y valores por defecto: `Tune.java`.
 
+## 4b. Carpetas con lente (2.2.0)
+- Las carpetas usan el mismo `cc/GlassShader` que el centro de control (se borró la copia antigua sin lente).
+- Lente del borde: 22 dp de alto (máx. ⅓ del lado corto), 30 dp de desplazamiento (escalado igual), dispersión 1,2, luz de la lente 0,10. Constantes `LIQUID_*` en `GlassFolder`.
+- El interior sigue el ajuste "Desenfoque" de carpetas (`icehome_folder_blur`); con 0 el fondo se ve nítido y solo el borde lo dobla.
+
 ## 5. Siguiente proyecto
 Animaciones estilo "Ice Home Up" (Good Lock Home Up) en el launcher de Xiaomi: abrir/cerrar apps con muelle desde el icono, carpetas que se expanden, cajón y recientes que siguen el dedo, panel de ajustes con deslizadores.

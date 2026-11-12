@@ -20,11 +20,11 @@ final class Motion {
     static final PathInterpolator EASE = new PathInterpolator(0.2f, 0f, 0f, 1f);
 
     /**
-     * Degradado de la marca: coral, rosa y malva. Son tonos saturados a propósito: los claros de antes
-     * se veían pastel sobre el fondo oscuro. Lo usan el botón principal, los puntos de progreso y la
-     * celebración final. Los títulos van en blanco.
+     * Color de la marca: el coral del icono en tres luces (claro, normal y profundo). Es un solo
+     * color que cambia de luz, no tres colores distintos: el típico degradado coral-rosa-morado
+     * queda genérico. Lo usan el botón principal, las baldosas encendidas y las olas.
      */
-    static final int[] BRAND = {0xFFFF6A55, 0xFFE94B7C, 0xFF9C5CF0};
+    static final int[] BRAND = {0xFFFF8A70, 0xFFF0604D, 0xFFDC4E3E};
 
     /** Cápsula con el degradado de la marca (fondo del botón principal). */
     static android.graphics.drawable.GradientDrawable brandPill(float radius) {

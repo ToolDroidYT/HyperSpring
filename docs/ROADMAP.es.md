@@ -5,7 +5,9 @@ Lo previsto para las próximas versiones. Los planes pueden cambiar. Las sugeren
 Criterio para entrar aquí: que lo vaya a usar bastante gente, que se pueda mantener cuando cambie HyperOS y que no cueste batería ni fluidez a quien no lo usa. Un efecto llamativo que se desactiva a los dos días no entra.
 
 ## Errores conocidos
-- Ninguno abierto ahora mismo. Si encuentras uno, abre un issue con el registro (**Acerca de → Copiar registro**) y tus ajustes (**Acerca de → Exportar ajustes**).
+- [x] **Bienvenida** (arreglado en la 2.2.0): en la primera pantalla, el texto se mete por debajo del icono. Idea: que el icono empuje las letras al bajar, y que estas se desenfoquen hasta desaparecer.
+- [x] **Acerca de** (arreglado en la 2.2.0): el icono que flota se corta al llegar arriba.
+- Si encuentras uno, abre un issue con el registro (**Acerca de → Copiar registro**) y tus ajustes (**Acerca de → Exportar ajustes**).
 
 ## Siguiente
 - [ ] **Abrir y cerrar apps mejor que nunca:** pulir la animación hasta que parezca hecha por la propia Xiaomi y sea un espectáculo visual.

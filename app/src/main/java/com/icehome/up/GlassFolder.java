@@ -18,6 +18,7 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import com.icehome.up.cc.GlassShader;
 import com.icehome.up.xp.XC_MethodHook;
 import com.icehome.up.xp.XposedBridge;
 import com.icehome.up.xp.XposedHelpers;
@@ -32,6 +33,8 @@ import com.icehome.up.xp.XposedHelpers;
  *    (refracción con dispersión de color) y el borde se ilumina con el color de lo que hay
  *    detrás, como si el cristal llegara hasta el canto.
  *  - Desactivado: fondo plano del sistema; solo el canto refracta y se ilumina.
+ * Con fondo legible, además, cristal líquido: el borde actúa de lente gruesa (como en el centro
+ * de control) y dobla hacia dentro lo que hay detrás, con algo de arcoíris en las esquinas.
  * Encima: velo blanco suave, brillo especular desde arriba-izquierda y un filo blanco fino.
  * Sin AGSL (Android < 13) o con fondo animado: velo, brillo y canto blanco como antes.
  */
@@ -65,6 +68,16 @@ final class GlassFolder {
     /** Canto iluminado con el color de lo que hay detrás. */
     static final float TINT_RIM_DP = 0.8f, GLOW_DP = 0f, TINT_RIM_GAIN = 1.0f;
     static final float LENS_LIGHT = 0.04f;
+    /**
+     * Cristal líquido (la misma lente que el centro de control, de Kyant0/AndroidLiquidGlass):
+     * cerca del borde el fondo se dobla hacia dentro como en un bisel de vidrio grueso, y en las
+     * esquinas los colores se separan un poco, como en un prisma. La lente no pasa de un tercio
+     * del lado corto, para que en las carpetas pequeñas no se coma el centro; el desplazamiento
+     * se reduce en la misma proporción.
+     */
+    static final float LIQUID_H_DP = 22f, LIQUID_AMT_DP = 30f, LIQUID_CHROMA = 1.2f;
+    /** Brillo de la lente con cristal líquido: más que el canto fino para que se note el volumen. */
+    static final float LIQUID_LIGHT = 0.10f;
     static final int VEIL_TOP_GLASS = 0x0C, VEIL_BOTTOM_GLASS = 0x00;
 
     private static boolean shaderBroken;
@@ -201,8 +214,7 @@ final class GlassFolder {
             int sw = Math.max(dm.widthPixels, 1), sh = Math.max(dm.heightPixels, 1);
             float screenPerSrc = Math.max((float) sw / b.getWidth(), (float) sh / b.getHeight());
             float blurDp = Tune.get(ctx, "icehome_folder_blur");
-            wall = GlassShader.shrinkBlur(b, screenPerSrc, SAMPLE_DP * dm.density, blurDp * dm.density);
-        } catch (Throwable t) {
+            wall = GlassShader.shrinkBlur(b, screenPerSrc, SAMPLE_DP * dm.density, blurDp * dm.density);        } catch (Throwable t) {
             wall = null;
         }
     }
@@ -406,7 +418,11 @@ final class GlassFolder {
                 rs.setFloatUniform("glow", GLOW_DP * density);
                 rs.setFloatUniform("sat", GLASS_SAT);
                 rs.setFloatUniform("rimGain", TINT_RIM_GAIN);
-                rs.setFloatUniform("light", LENS_LIGHT);
+                float lensH = Math.min(LIQUID_H_DP * density, Math.min(w, h) / 3f);
+                rs.setFloatUniform("refrH", lensH);
+                rs.setFloatUniform("refrAmt", LIQUID_AMT_DP * density * lensH / (LIQUID_H_DP * density));
+                rs.setFloatUniform("chroma", LIQUID_CHROMA);
+                rs.setFloatUniform("light", LIQUID_LIGHT);
                 rs.setFloatUniform("active", 0f);
                 refract.setShader(rs);
                 refract.setAlpha(alpha);
