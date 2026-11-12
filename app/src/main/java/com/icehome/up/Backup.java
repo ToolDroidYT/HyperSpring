@@ -45,7 +45,8 @@ final class Backup {
         root.put("systemui", String.valueOf(state.getString("systemui_seen", "")));
         JSONObject s = new JSONObject();
         for (Map.Entry<String, ?> e : c.getSharedPreferences(PrefsProvider.PREFS, 0).getAll().entrySet()) {
-            if (item(e.getKey()) != null) s.put(e.getKey(), String.valueOf(e.getValue()));
+            // La lista de apps sin genio es texto, no un número de las tablas, pero también va.
+            if (item(e.getKey()) != null || Exclude.KEY.equals(e.getKey())) s.put(e.getKey(), String.valueOf(e.getValue()));
         }
         root.put("settings", s);
         return root.toString(2);
@@ -69,6 +70,15 @@ final class Backup {
             int n = 0;
             for (Iterator<String> it = s.keys(); it.hasNext(); ) {
                 String key = it.next();
+                if (Exclude.KEY.equals(key)) {
+                    // Se limpia: solo pasan nombres de paquete válidos.
+                    String list = Exclude.join(Exclude.parse(s.optString(key)));
+                    if (!list.isEmpty()) {
+                        e.putString(key, list);
+                        n++;
+                    }
+                    continue;
+                }
                 Object[] item = item(key);
                 if (item == null) continue;
                 float v;

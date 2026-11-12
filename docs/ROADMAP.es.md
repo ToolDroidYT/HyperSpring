@@ -40,10 +40,10 @@ Ideas apuntadas el 11-11-2026. Están sin empezar y sin orden fijo. Antes de hac
 - [ ] **Zoom suave al desbloquear:** el escritorio entra con una escala ligera, sin animar cada icono.
 
 ### Funciones
-- [ ] **Lista de apps excluidas:** apps sin genio o sin telón (juegos, cámara, vídeo).
+- [x] **Lista de apps excluidas del genio:** las apps elegidas se abren y se cierran con la animación de HyperOS. Se aplica al momento. *Hecho, sin publicar todavía.* Falta lo mismo para la cortina de la interfaz del sistema.
 - [ ] **Pausa automática:** los efectos pesados se apagan solos con el ahorro de batería, en juegos (Game Turbo) o con el móvil caliente.
 - [ ] **Vibración sutil** sincronizada con las animaciones: cuando el genio aterriza en el icono, cuando rebota una carpeta, cuando cambia la pila de widgets.
-- [ ] **Editor visual del muelle:** una gráfica animada de la curva mientras mueves la rigidez y la amortiguación.
+- [x] **Editor visual del muelle:** una gráfica animada de la curva mientras mueves Velocidad y Rebote, con un móvil en miniatura que abre una ventana con ese muelle. *Hecho, sin publicar todavía.*
 - [ ] **Tile en los ajustes rápidos** para activar o desactivar HyperSpring y reiniciar el launcher.
 - [x] **Aviso de versión nueva:** consulta las releases de GitHub (se puede desactivar), y descarga e instala desde la app. *Hecho, sin publicar todavía.*
 - [x] **Novedades al actualizar:** al abrir la app tras actualizarla, una pantalla animada con lo nuevo. *Hecho, sin publicar todavía.*

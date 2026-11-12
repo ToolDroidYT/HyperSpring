@@ -6,6 +6,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.text.TextUtils;
@@ -209,7 +210,7 @@ public class SettingsActivity extends Activity {
     /** Se apunta o se quita del gesto según haya algo que deshacer dentro de la app. */
     private void syncBack() {
         if (Build.VERSION.SDK_INT < 34 || backCb == null) return;
-        boolean need = sheet != null || ob != null || pages.size() > 1 || tab != 0;
+        boolean need = menuClose != null || sheet != null || ob != null || pages.size() > 1 || tab != 0;
         if (need == backOn) return;
         backOn = need;
         android.window.OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
@@ -222,7 +223,9 @@ public class SettingsActivity extends Activity {
     private void startBack(boolean fromLeft) {
         backAnim = null;
         sheetDrag = false;
-        if (sheet != null) {
+        if (menuClose != null) {
+            // Con el menú desplegable abierto, «atrás» solo lo cierra (al soltar).
+        } else if (sheet != null) {
             sheetDrag = true;                       // la hoja baja un poco con el dedo
         } else if (ob != null) {
             // La presentación tiene sus propias transiciones: se cambia de paso al soltar.
@@ -469,6 +472,10 @@ public class SettingsActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (menuClose != null) {
+            menuClose.run();
+            return;
+        }
         if (sheet != null) {
             sheet.dismiss();
             return;
@@ -1084,8 +1091,59 @@ public class SettingsActivity extends Activity {
     private ScrollView sectionPage(final Section s) {
         LinearLayout c = column();
         c.addView(space(16));
+        // En «Abrir y cerrar apps», la gráfica del muelle va encima de los ajustes.
+        springGraph = null;
+        if (s.items.contains(item(Tune.ITEMS, "icehome_anim_speed"))) {
+            LinearLayout g = card();
+            g.setPadding(px(16), px(14), px(16), px(14));
+            TextView gt = text(I18n.t("Así se mueve la ventana", "How the window moves"), 13, accent);
+            gt.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            gt.setPadding(0, 0, 0, px(8));
+            g.addView(gt);
+            springGraph = new SpringGraph(this, accent, text2, text3);
+            graphSpeed = stored(item(Tune.ITEMS, "icehome_anim_speed"));
+            graphBounce = stored(item(Tune.ITEMS, "icehome_anim_bounce"));
+            springGraph.set(graphSpeed, graphBounce, true);
+            g.addView(springGraph, new LinearLayout.LayoutParams(-1, -2));
+            TextView gh = text(I18n.t("El pico por encima de la línea de puntos es el rebote.",
+                    "The peak above the dotted line is the bounce."), 12.5f, text3);
+            gh.setPadding(0, px(8), 0, px(4));
+            g.addView(gh);
+            // Velocidad y Rebote van aquí, pegados a la gráfica: así ves la curva mientras los mueves.
+            // Las filas traen su propio margen lateral; se lo quitamos al relleno de la tarjeta.
+            g.setPadding(px(16), px(14), px(16), px(4));
+            for (String key : new String[]{"icehome_anim_speed", "icehome_anim_bounce"}) {
+                View row = settingRow(item(Tune.ITEMS, key));
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                rl.leftMargin = -px(16);
+                rl.rightMargin = -px(16);
+                g.addView(row, rl);
+            }
+            c.addView(g);
+            c.addView(space(14));
+            // Apps que se abren con la animación normal de HyperOS.
+            LinearLayout ex = card();
+            final TextView[] sub = new TextView[1];
+            View exRow = navRow(Icons.TOGGLES, I18n.t("Apps sin genio", "Apps without genie"), excludeSummary(), true,
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            push(excludePage(sub[0]));
+                        }
+                    });
+            // El subtítulo de la fila, para actualizarlo al volver de la lista.
+            sub[0] = (TextView) ((ViewGroup) ((ViewGroup) exRow).getChildAt(1)).getChildAt(1);
+            ex.addView(exRow);
+            c.addView(ex);
+            c.addView(space(14));
+        }
         LinearLayout k = card();
-        for (Object[] it : s.items) k.addView(settingRow(it));
+        for (Object[] it : s.items) {
+            String key = (String) it[0];
+            // Si ya están en la tarjeta de la gráfica, no se repiten.
+            if (springGraph != null && ("icehome_anim_speed".equals(key) || "icehome_anim_bounce".equals(key))) continue;
+            k.addView(settingRow(it));
+        }
         c.addView(k);
         TextView hint = text(I18n.t("Toca una fila para leer qué hace. Mantén pulsada para volver a su valor por defecto.",
                 "Tap a row to read what it does. Long-press it to reset it to its default."), 13, text3);
@@ -1361,10 +1419,197 @@ public class SettingsActivity extends Activity {
         return r;
     }
 
+    // ---------------------------------------------------------------- apps sin genio
+
+    private java.util.Set<String> excludedNow() {
+        return Exclude.parse(getSharedPreferences(PrefsProvider.PREFS, 0).getString(Exclude.KEY, null));
+    }
+
+    private String excludeSummary() {
+        int n = excludedNow().size();
+        if (n == 0) return I18n.t("Todas las apps usan el genio", "Every app uses the genie");
+        return n == 1 ? I18n.t("1 app con la animación de HyperOS", "1 app with the HyperOS animation")
+                : I18n.t(n + " apps con la animación de HyperOS", n + " apps with the HyperOS animation");
+    }
+
+    /**
+     * Lista de apps con un interruptor cada una: encendido = esa app se abre y se cierra con la
+     * animación normal de HyperOS. Se aplica al momento, sin reiniciar el launcher (el ajuste le
+     * llega como los deslizadores).
+     */
+    private ScrollView excludePage(final TextView summary) {
+        final LinearLayout c = column();
+        TextView intro = text(I18n.t("Útil para juegos, la cámara o apps de vídeo: se abren al instante, sin el efecto. Se aplica al momento.",
+                "Handy for games, the camera or video apps: they open straight away, without the effect. Applies right away."), 14, text2);
+        intro.setLineSpacing(0, 1.15f);
+        intro.setPadding(px(8), px(4), px(8), px(14));          // alineado con el título
+        c.addView(intro);
+
+        // Buscador: filtra por nombre o por paquete mientras escribes.
+        final android.widget.EditText search = new android.widget.EditText(this);
+        search.setHint(I18n.t("Buscar app", "Search apps"));
+        search.setHintTextColor(text3);
+        search.setTextColor(text);
+        search.setTextSize(15);
+        search.setSingleLine(true);
+        search.setBackground(round(card, px(18)));
+        search.setPadding(px(18), px(12), px(18), px(12));
+        c.addView(search, new LinearLayout.LayoutParams(-1, -2));
+        c.addView(space(12));
+
+        final LinearLayout list = card();
+        final TextView loading = text(I18n.t("Cargando apps…", "Loading apps…"), 14, text3);
+        loading.setPadding(px(18), px(18), px(18), px(18));
+        list.addView(loading);
+        c.addView(list);
+
+        final java.util.Set<String> chosen = excludedNow();
+        final List<View> rows = new ArrayList<>();
+        final List<String> keys = new ArrayList<>();      // «nombre paquete» en minúsculas, para buscar
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int n) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int n) {
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                String q = s.toString().trim().toLowerCase(java.util.Locale.ROOT);
+                for (int i = 0; i < rows.size(); i++) {
+                    rows.get(i).setVisibility(q.isEmpty() || keys.get(i).contains(q) ? View.VISIBLE : View.GONE);
+                }
+            }
+        });
+
+        // Las apps y sus iconos se leen en otro hilo: con cien apps, en el principal se notaría.
+        final android.os.Handler main = new android.os.Handler(getMainLooper());
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final List<Object[]> apps = new ArrayList<>();   // {paquete, nombre, ResolveInfo}
+                final android.content.pm.PackageManager pm = getPackageManager();
+                try {
+                    android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+                    i.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+                    java.util.Set<String> seen = new java.util.HashSet<>();
+                    for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(i, 0)) {
+                        String pkg = ri.activityInfo.packageName;
+                        if (pkg.equals(getPackageName()) || !seen.add(pkg)) continue;
+                        apps.add(new Object[]{pkg, String.valueOf(ri.loadLabel(pm)), ri});
+                    }
+                } catch (Throwable ignored) {
+                }
+                // Primero las excluidas; luego por orden alfabético.
+                java.util.Collections.sort(apps, new java.util.Comparator<Object[]>() {
+                    @Override
+                    public int compare(Object[] a, Object[] b) {
+                        boolean ea = chosen.contains((String) a[0]), eb = chosen.contains((String) b[0]);
+                        if (ea != eb) return ea ? -1 : 1;
+                        return ((String) a[1]).compareToIgnoreCase((String) b[1]);
+                    }
+                });
+                // Primero los nombres (rápido) y la lista ya se puede usar; los iconos, que son lo
+                // lento, van llegando después de arriba abajo.
+                final List<ImageView> icons = new ArrayList<>();
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        list.removeView(loading);
+                        for (Object[] app : apps) {
+                            View r = appRow((String) app[0], (String) app[1], chosen, summary);
+                            rows.add(r);
+                            icons.add((ImageView) ((ViewGroup) r).getChildAt(0));
+                            keys.add((app[1] + " " + app[0]).toLowerCase(java.util.Locale.ROOT));
+                            list.addView(r);
+                        }
+                        Motion.cascade(list, 0, px(14));
+                    }
+                });
+                for (int k = 0; k < apps.size(); k++) {
+                    final int idx = k;
+                    final Drawable d;
+                    try {
+                        d = ((android.content.pm.ResolveInfo) apps.get(k)[2]).loadIcon(pm);
+                    } catch (Throwable t) {
+                        continue;
+                    }
+                    main.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (idx >= icons.size()) return;
+                            ImageView iv = icons.get(idx);
+                            iv.setImageDrawable(d);
+                            iv.setBackground(null);
+                            iv.setAlpha(0f);
+                            iv.animate().alpha(1f).setDuration(220).start();   // aparece suave, sin parpadeo
+                        }
+                    });
+                }
+            }
+        }, "HyperSpring-apps").start();
+
+        return page(I18n.t("Apps sin genio", "Apps without genie"), null, true, c);
+    }
+
+    private View appRow(final String pkg, String label, final java.util.Set<String> chosen,
+                        final TextView summary) {
+        LinearLayout r = rowBase();
+        ImageView iv = new ImageView(this);                  // el icono llega después
+        iv.setBackground(round(0x14FFFFFF, px(10)));         // hueco gris mientras tanto
+        LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(px(36), px(36));
+        il.rightMargin = px(14);
+        r.addView(iv, il);
+        LinearLayout tc = titles(label, pkg);
+        // El paquete en una sola línea: los largos se cortan con «…».
+        TextView p = (TextView) tc.getChildAt(1);
+        p.setSingleLine(true);
+        p.setEllipsize(TextUtils.TruncateAt.END);
+        r.addView(tc);
+        final Controls.Toggle t = new Controls.Toggle(this, accentStrong, track);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = px(12);
+        r.addView(t, lp);
+        t.setChecked(chosen.contains(pkg), false);
+        t.setOnChange(new Controls.Toggle.OnChange() {
+            @Override
+            public void onChange(boolean on) {
+                if (on) chosen.add(pkg);
+                else chosen.remove(pkg);
+                write(Exclude.KEY, chosen.isEmpty() ? null : Exclude.join(chosen));
+                if (summary != null) summary.setText(excludeSummary());
+            }
+        });
+        r.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                t.toggle(true);
+            }
+        });
+        sink(r);
+        return r;
+    }
+
+    /** La gráfica del muelle de la página abierta (null si la página no la tiene). */
+    private SpringGraph springGraph;
+    private float graphSpeed = 1f, graphBounce = 0f;
+
+    /** Pasa a la gráfica el valor de Velocidad o Rebote mientras se mueve su deslizador. */
+    private void graph(String key, float v) {
+        if (springGraph == null) return;
+        if ("icehome_anim_speed".equals(key)) graphSpeed = v;
+        else if ("icehome_anim_bounce".equals(key)) graphBounce = v;
+        else return;
+        springGraph.set(graphSpeed, graphBounce, false);
+    }
+
     private View settingRow(final Object[] it) {
         final int decimals = (Integer) it[5];
         if (decimals < 0) return toggleRow(-1, it, I18n.title(it));
         final String key = (String) it[0];
+        if ("icehome_genie_style".equals(key)) return pickerRow(it, styleNames(), styleHints());
         final float min = (Float) it[2], max = (Float) it[3];
         LinearLayout r = rowBase();
         r.setOrientation(LinearLayout.VERTICAL);
@@ -1396,6 +1641,7 @@ public class SettingsActivity extends Activity {
                 float v = stored(it);
                 sl.setFraction((v - min) / (max - min));
                 value.setText(format(v, decimals));
+                graph(key, v);
             }
         };
         refresh.run();
@@ -1405,6 +1651,7 @@ public class SettingsActivity extends Activity {
             public void onChange(float f, boolean done) {
                 float v = min + (max - min) * f;
                 value.setText(format(v, decimals));
+                graph(key, v);                              // la curva sigue al dedo, sin esperar a soltar
                 if (done) write(key, format(v, Math.max(decimals, 0)).replace(',', '.'));
             }
         });
@@ -1418,6 +1665,214 @@ public class SettingsActivity extends Activity {
         }
         resetOnLongPress(r, it, refresh);
         return r;
+    }
+
+    // ---------------------------------------------------------------- menú desplegable
+
+    private String[] styleNames() {
+        return new String[]{I18n.t("Genio clásico", "Classic genie"), I18n.t("Copa", "Cup"),
+                "Ice", I18n.t("Profundidad", "Depth")};
+    }
+
+    private String[] styleHints() {
+        return new String[]{
+                I18n.t("Sale del icono con cola, como en un Mac", "Comes out of the icon with a tail, like on a Mac"),
+                I18n.t("Arriba sube primero, como Samsung", "The top rises first, like Samsung"),
+                I18n.t("Copa suave con rebote y fondo oscurecido", "Soft cup with a bounce and a dimmed background"),
+                I18n.t("Sin genio: se inclina, se dobla y deja estela", "No genie: it tilts, bends and leaves a trail")};
+    }
+
+    /** Color {@code top} (con su transparencia) pintado encima de {@code under} (opaco). */
+    private static int over(int top, int under) {
+        float a = (top >>> 24) / 255f;
+        int r = Math.round(((top >> 16) & 255) * a + ((under >> 16) & 255) * (1f - a));
+        int g = Math.round(((top >> 8) & 255) * a + ((under >> 8) & 255) * (1f - a));
+        int b = Math.round((top & 255) * a + (under & 255) * (1f - a));
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    /** Lo que hace el menú al elegir una opción. */
+    private interface MenuPick {
+        void pick(int index);
+    }
+
+    /** Cierra el menú desplegable abierto (null si no hay ninguno). */
+    private Runnable menuClose;
+
+    /**
+     * Fila de un ajuste con pocas opciones (el estilo del genio): en vez de un deslizador de
+     * números, el nombre de la opción en una pastilla. Al tocarla se despliega un menú encima,
+     * como en HyperOS 4 o iOS.
+     */
+    private View pickerRow(final Object[] it, final String[] names, final String[] hints) {
+        final String key = (String) it[0];
+        final int max = Math.round((Float) it[3]);
+        LinearLayout r = rowBase();
+        final LinearLayout tc = titles(I18n.title(it), "");
+        final TextView sub = (TextView) tc.getChildAt(1);
+        r.addView(tc);
+        // Pastilla: nombre de la opción y una flecha hacia abajo (el chevron girado).
+        final LinearLayout pill = new LinearLayout(this);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(px(12), px(6), px(8), px(6));
+        pill.setBackground(round(accentSoft, px(14)));
+        final TextView value = text("", 15, accent);
+        value.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        pill.addView(value);
+        ImageView arrow = new ImageView(this);
+        arrow.setImageDrawable(new Icons(Icons.CHEVRON, accent));
+        arrow.setRotation(90f);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(px(16), px(16));
+        alp.leftMargin = px(4);
+        pill.addView(arrow, alp);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-2, -2);
+        plp.leftMargin = px(12);
+        r.addView(pill, plp);
+        final Runnable refresh = new Runnable() {
+            @Override
+            public void run() {
+                int v = Math.max(0, Math.min(max, Math.round(stored(it))));
+                value.setText(names[v]);
+                sub.setText(hints[v]);
+            }
+        };
+        refresh.run();
+        refreshers.add(refresh);
+        r.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                int now = Math.max(0, Math.min(max, Math.round(stored(it))));
+                showMenu(pill, names, hints, now, new MenuPick() {
+                    @Override
+                    public void pick(int index) {
+                        write(key, String.valueOf(index));
+                        refresh.run();
+                    }
+                });
+            }
+        });
+        resetOnLongPress(r, it, refresh);
+        sink(r);
+        return r;
+    }
+
+    /**
+     * Menú desplegable: una tarjeta flotante que nace de {@code anchor} con un muelle (crece
+     * desde su esquina, como en iOS), con las opciones apareciendo una tras otra y una marca en la
+     * elegida. Se cierra al elegir, al tocar fuera o con «atrás».
+     */
+    private void showMenu(final View anchor, String[] names, String[] hints, int chosen, final MenuPick pick) {
+        if (menuClose != null || root == null) return;
+        final FrameLayout scrim = new FrameLayout(this);
+        scrim.setBackgroundColor(0x24000000);
+        scrim.setAlpha(0f);
+        final LinearLayout menu = column();
+        // Opaco: las tarjetas de la app son translúcidas (dejan ver el fondo) y aquí se leería el
+        // texto de debajo. Se mezcla a mano el color de tarjeta sobre el de fondo, un poco más claro.
+        menu.setBackground(round(over(card, over(0x14FFFFFF, bg | 0xFF000000)), px(22)));
+        menu.setElevation(px(18));
+        menu.setClipToOutline(true);
+        menu.setPadding(0, px(6), 0, px(6));
+        menu.setClickable(true);                     // tocar su borde no lo cierra (solo fuera)
+        final int menuW = Math.min(px(300), root.getWidth() - px(32));
+        for (int i = 0; i < names.length; i++) {
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(px(18), px(11), px(16), px(11));
+            row.setBackground(new RippleDrawable(ColorStateList.valueOf(pressed), null, new ColorDrawable(Color.WHITE)));
+            LinearLayout col = column();
+            TextView n = text(names[i], 16, i == chosen ? accent : text);
+            n.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            col.addView(n);
+            TextView h = text(hints[i], 12.5f, text2);
+            h.setPadding(0, px(2), 0, 0);
+            col.addView(h);
+            row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView check = text("✓", 17, accent);
+            check.setVisibility(i == chosen ? View.VISIBLE : View.INVISIBLE);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, -2);
+            clp.leftMargin = px(12);
+            row.addView(check, clp);
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                    pick.pick(index);
+                    if (menuClose != null) menuClose.run();
+                }
+            });
+            menu.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        menu.measure(View.MeasureSpec.makeMeasureSpec(menuW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        final int menuH = menu.getMeasuredHeight();
+        // Debajo de la pastilla, alineado a su derecha; si no cabe, encima.
+        int[] a = new int[2], o = new int[2];
+        anchor.getLocationInWindow(a);
+        root.getLocationInWindow(o);
+        int ax = a[0] - o[0], ay = a[1] - o[1];
+        int x = Math.max(px(16), Math.min(root.getWidth() - menuW - px(16), ax + anchor.getWidth() - menuW));
+        int y = ay + anchor.getHeight() + px(8);
+        boolean above = y + menuH > root.getHeight() - insetBottom - px(16);
+        if (above) y = Math.max(insetTop + px(8), ay - menuH - px(8));
+        FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(menuW, menuH);
+        mlp.leftMargin = x;
+        mlp.topMargin = y;
+        scrim.addView(menu, mlp);
+        root.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
+        // Crece desde el punto de la pastilla: su esquina derecha, arriba (o abajo si va encima).
+        menu.setPivotX(Math.max(0, Math.min(menuW, ax + anchor.getWidth() / 2 - x)));
+        menu.setPivotY(above ? menuH : 0);
+        menu.setScaleX(0.4f);
+        menu.setScaleY(0.25f);
+        menu.setAlpha(0f);
+        scrim.animate().alpha(1f).setDuration(200).start();
+        menu.animate().alpha(1f).setDuration(140).start();
+        final ValueAnimator grow = ValueAnimator.ofFloat(0f, 1f);
+        Spring.apply(grow, 0f, 1f, 0f, 0.42f, 0.74f);
+        grow.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator va) {
+                float f = (Float) va.getAnimatedValue();
+                menu.setScaleX(0.4f + 0.6f * f);
+                menu.setScaleY(0.25f + 0.75f * f);
+            }
+        });
+        grow.start();
+        for (int i = 0; i < menu.getChildCount(); i++) {
+            View c = menu.getChildAt(i);
+            c.setAlpha(0f);
+            c.setTranslationY(above ? px(8) : -px(8));
+            c.animate().alpha(1f).translationY(0f).setStartDelay(40 + 35L * (above ? menu.getChildCount() - 1 - i : i))
+                    .setDuration(320).setInterpolator(Motion.EXPO_OUT).start();
+        }
+        menuClose = new Runnable() {
+            @Override
+            public void run() {
+                if (menuClose != this) return;
+                menuClose = null;
+                syncBack();
+                grow.cancel();
+                scrim.setEnabled(false);
+                scrim.animate().alpha(0f).setDuration(200).start();
+                menu.animate().scaleX(0.7f).scaleY(0.6f).alpha(0f).setDuration(180).setInterpolator(Motion.EASE)
+                        .withEndAction(new Runnable() {
+                            @Override
+                            public void run() {
+                                root.removeView(scrim);
+                            }
+                        }).start();
+            }
+        };
+        scrim.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (menuClose != null) menuClose.run();
+            }
+        });
+        syncBack();
     }
 
     /** Explicación de un ajuste: una línea; al tocar la fila se despliega entera (y se recoge). */

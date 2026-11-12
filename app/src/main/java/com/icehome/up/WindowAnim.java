@@ -473,6 +473,8 @@ final class WindowAnim {
                                 for (Object t : (Object[]) arg) {
                                     if (t == null || !targetClass.isInstance(t)) continue;
                                     if (mode.getInt(t) != 1 || activityType.getInt(t) != 1) continue;  // la app que se cierra
+                                    // Una app excluida se cierra sin genio: no hace falta capturarla.
+                                    if (Exclude.genie(packageOf(t, pkgField))) return;
                                     SurfaceControl sc = surface(leash.get(t));
                                     Point pos = (Point) position.get(t);
                                     Genie.precapture(sc, task.getInt(t), pos == null ? 0 : pos.x, pos == null ? 0 : pos.y,
@@ -497,12 +499,15 @@ final class WindowAnim {
                 if (!Genie.enabled || ((android.view.MotionEvent) p.args[0]).getActionMasked() != android.view.MotionEvent.ACTION_DOWN) return;
                 try {
                     View v = (View) p.thisObject;
+                    String pkg = packageOfIcon(v);
+                    touchedPkg = pkg;
+                    if (Exclude.genie(pkg)) return;                 // va sin genio: no se prepara nada
                     Drawable d = copy((Drawable) iconDrawable.get(v));
                     if (d == null) return;
                     iconBounds.invoke(v, r);
                     v.getLocationOnScreen(loc);
                     Genie.prepareIcon(d, new RectF(r.left + loc[0], r.top + loc[1], r.right + loc[0], r.bottom + loc[1]),
-                            packageOfIcon(v));
+                            pkg);
                 } catch (Throwable e) {
                     Log.e("precarga: icono", e);
                 }
@@ -572,12 +577,23 @@ final class WindowAnim {
                 return;
             }
             Object target = firstTarget.invoke(set);
+            // Apps excluidas: solo se mira al empezar (no se corta un genio ya en marcha).
+            if (starting && !Exclude.genie.isEmpty() && Exclude.genie(packageOfTarget(target))) {
+                excluded(impl, type);
+                return;
+            }
             if (target != null) {
                 leash = surface(targetLeash.get(target));
                 pos = (Point) targetPosition.get(target);
                 task = targetTask.getInt(target);
             }
             if (leash != null && !leash.isValid()) leash = null;
+        }
+        // Al abrir, el primer fotograma a veces llega sin ventana todavía (arranque rápido): entonces
+        // vale el icono que se acaba de tocar.
+        if (open && set == null && starting && Exclude.genie(touchedPkg)) {
+            excluded(impl, type);
+            return;
         }
         if (!open && leash == null) {                                // cerrar sin ventana: nada
             reject(type, "sin ventana");
@@ -645,6 +661,32 @@ final class WindowAnim {
         }
         if (!open && f.hasIcon && (starting || wantIcon || Genie.needsTarget(impl))) f.targetView = currentTargetView();
         Genie.frame(f);
+    }
+
+    /** Paquete del último icono del escritorio que se ha tocado. */
+    private static volatile String touchedPkg;
+
+    private static void excluded(Object impl, String type) {
+        Genie.stopFor(impl, "app excluida");
+        reject(type, "app excluida por el usuario");
+    }
+
+    /** Paquete de una ventana del conjunto de MIUI (su campo, o la tarea del sistema). */
+    private static String packageOfTarget(Object target) {
+        if (target == null) return null;
+        try {
+            Object p = XposedHelpers.getObjectField(target, "packageName");
+            if (p instanceof String) return (String) p;
+        } catch (Throwable ignored) {
+        }
+        try {
+            Object rat = XposedHelpers.getObjectField(target, "target");
+            Object info = rat == null ? null : XposedHelpers.getObjectField(rat, "taskInfo");
+            Object base = info == null ? null : XposedHelpers.getObjectField(info, "baseActivity");
+            return base instanceof android.content.ComponentName ? ((android.content.ComponentName) base).getPackageName() : null;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** Ventana que anima este animador (o null). */

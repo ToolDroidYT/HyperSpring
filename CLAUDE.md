@@ -22,6 +22,7 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
   - `GlRenderer.java`: OpenGL, shaders del genio (`VERTEX`, `FRAGMENT_*`).
   - `RecentsCurtain.java`: tarjetas de recientes que se doblan (AGSL).
   - `FolderMorph`, `GlassFolder`, `StackSwipe`, `IconPress`, `WallpaperZoom`, `Springs`: el resto de efectos.
+  - `Exclude.java`: apps sin genio. Un ajuste de texto (`icehome_exclude`, paquetes separados por comas) fuera de `Tune.ITEMS`; `WindowAnim.onFrame` lo mira al empezar cada animación.
 - **Interfaz del sistema:**
   - `telon/`: transición de cortina y modo seguro de SystemUI.
   - `cc/CcGlass.java` + `cc/GlassShader.java`: cristal del centro de control (y del volumen).

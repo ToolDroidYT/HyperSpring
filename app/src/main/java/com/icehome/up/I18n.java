@@ -96,7 +96,7 @@ final class I18n {
         i("icehome_curtain_on", "Bending recents",
                 "In recents, cards bend the other way depending on how hard you swipe them. Applies after restarting the launcher.");
         i("icehome_genie_style", "Style",
-                "0 = classic genie with a tail. 1 = Samsung-like cup: the top rises first, then the rest follows. 2 = Ice: a softer cup with a bounce on open, the icon catching the cup and the home screen dimming behind.");
+                "0 = classic genie with a tail. 1 = Samsung-like cup: the top rises first, then the rest follows. 2 = Ice: a softer cup with a bounce on open, the icon catching the cup and the home screen dimming behind. 3 = Depth: no genie; the normal HyperOS animation, but the window is a rigid sheet that tilts (top away), more the harder you close it, and leaves a motion blur trail. Strength sets the tilt and the blur.");
         i("icehome_genie_strength", "Strength",
                 "How much the window bends. 0 is a plain rectangle; 1.8–2.2 looks like Samsung.");
         i("icehome_genie_quality", "Resolution",

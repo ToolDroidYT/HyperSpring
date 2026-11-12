@@ -16,6 +16,12 @@
         <package android:name="com.miui.home" />
         <package android:name="com.android.systemui" />
         <package android:name="miui.systemui.plugin" />
+        <!-- Las apps del cajón (las que tienen icono), para elegir cuáles van sin genio.
+             Solo esas: no hace falta el permiso de ver todas las apps instaladas. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

@@ -3,6 +3,13 @@
 ## Unreleased
 
 **New**
+- **Depth style for opening and closing apps.** The normal HyperOS animation, but the window behaves like a rigid sheet with physics that tilts back, seen in real perspective. A genie that rotates instead of deforming.
+  - The top leans away and the bottom towards you, turning around its middle, so its overall size never pulses. Opening, it starts with a very slight tilt that straightens as the app fills the screen. Closing, it bends clearly as soon as it leaves full screen, more the harder you swipe, and lands flat on the icon. The bottom edge never grows past the screen.
+  - The tilt runs on a spring with weight: it lags a little when the window starts moving and straightens up with a tiny overshoot.
+  - Real motion blur along the way each part moves (a zoom when it grows), fading out before it settles, so it always lands sharp.
+  - The background blur is left to HyperOS; the home screen only dims very slightly.
+  - Strength sets the tilt and the blur.
+- **Style picker as a pull-down menu.** Instead of a 0–3 slider, Style shows the name of the current animation. Tap it and a menu springs open from the button, like in HyperOS 4 or iOS, with each style and a line on what it does.
 - **Updates from inside the app.**
   - HyperSpring checks GitHub for a new release when you open it, at most every 6 hours. You can turn that off, or check by hand, in About → Settings.
   - When there is one, a notice appears on Home and a sheet slides up. The logo pulses, the version number rolls over to the new one and the changes appear one by one.
@@ -10,6 +17,8 @@
   - As the version rolls over, a burst of coral, pink and mauve sparks and confetti flies out of the logo and drifts down.
   - After updating, a "What's new" sheet shows the changes once.
   - The app now asks for internet access (only to reach GitHub) and for permission to hand the update to the installer, which always asks you to confirm.
+- **Apps without genie** in Desktop → Opening and closing apps. Pick apps (games, the camera, video apps…) and they open and close with the normal HyperOS animation. There is a search box, the picked apps come first, and it applies right away without restarting the launcher. It's included when you export and import settings.
+- **Visual spring editor** in Desktop → Opening and closing apps. A graph draws the opening curve with your Speed and Bounce, and a tiny phone next to it opens and closes a window with that same spring while a dot runs along the curve. It shows how much the window overshoots and when it settles. Speed and Bounce now sit right under the graph, and the curve morphs as you drag them.
 - **Predictive back in the app (Android 14+).** While you swipe back from the edge, the page follows your finger: it shrinks, its corners round off and the previous page comes forward behind it. Let go and it springs away; change your mind and it springs back. The update sheet sinks a little with your finger too.
 - **Animated welcome.** The first time the app opens, a coral drop falls, bounces and turns into the icon, which rises to its place. The name comes in white, blurred with its letters spread out and closes up into focus, and three highlights appear one by one. Behind it, soft coral, pink and mauve light drifts across a dark background.
 - **Guided setup** in four more steps. Each one has a line icon on a coral tile, a big title and its pieces coming in one after another. Dots at the bottom stretch like a drop when you change step.

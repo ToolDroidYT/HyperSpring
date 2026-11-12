@@ -40,10 +40,10 @@ Ideas noted on 2026-11-11. Not started yet, in no fixed order. Before the home s
 - [ ] **Gentle zoom on unlock:** the home screen comes in with a slight scale, without animating each icon.
 
 ### Features
-- [ ] **Excluded apps list:** apps with no genie or no curtain (games, camera, video).
+- [x] **Apps excluded from the genie:** the apps you pick open and close with the HyperOS animation. Applies right away. *Done, not released yet.* The same for the System UI curtain is still to do.
 - [ ] **Automatic pause:** heavy effects switch off by themselves with battery saver, in games (Game Turbo) or when the phone is hot.
 - [ ] **Subtle vibration** in sync with the animations: when the genie lands in the icon, when a folder bounces, when the widget stack changes.
-- [ ] **Visual spring editor:** an animated graph of the curve while you move stiffness and damping.
+- [x] **Visual spring editor:** an animated graph of the curve while you move Speed and Bounce, with a tiny phone opening a window with that spring. *Done, not released yet.*
 - [ ] **Quick settings tile** to turn HyperSpring on or off and restart the launcher.
 - [x] **New version notice:** checks GitHub releases (can be turned off), and downloads and installs from the app. *Done, not released yet.*
 - [x] **What's new after updating:** an animated screen with the changes the first time the app opens after an update. *Done, not released yet.*

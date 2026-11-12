@@ -171,8 +171,45 @@ final class Genie {
      * curva del genio clásico. Al cerrar es lo mismo al revés: abajo se mete en el icono antes.
      */
     static volatile int style = 0;   // STYLE_CLASSIC (por defecto)
-    /** Estilos: genio clásico con cola, copa como Samsung, copa «Ice» (la nuestra). */
-    static final int STYLE_CLASSIC = 0, STYLE_SAMSUNG = 1, STYLE_ICE = 2;
+    /** Estilos: genio clásico con cola, copa como Samsung, copa «Ice» (la nuestra) y Profundidad (sin genio). */
+    static final int STYLE_CLASSIC = 0, STYLE_SAMSUNG = 1, STYLE_ICE = 2, STYLE_DEPTH = 3;
+    /**
+     * Profundidad: sin genio. La ventana sigue el rectángulo de MIUI (su muelle de siempre), pero
+     * se comporta como una lámina con peso, vista en perspectiva:
+     * <ul>
+     * <li>Sigue la animación normal de HyperOS (el rectángulo de MIUI), sin cambiar su recorrido.</li>
+     * <li><b>Hoja que rota:</b> rígida, sin deformarse, siempre con arriba hacia el fondo
+     * y abajo hacia ti (hasta {@link #DEPTH_TILT}). Al salir de la app se dobla enseguida y
+     * más cuanto más fuerte es el gesto; nunca se sale de la pantalla. La lleva un muelle con peso, así que se
+     * inclina con retraso y se endereza al llegar. A pantalla completa es un rectángulo normal.</li>
+     * <li><b>Desenfoque de movimiento:</b> como una cámara con el obturador abierto
+     * {@link #DEPTH_SHUTTER_S}: cada punto se difumina en la dirección en la que va. Al crecer
+     * desde el icono los bordes se estiran hacia fuera, como un zoom.</li>
+     * <li>El escritorio se oscurece un poco detrás, para dar fondo.</li>
+     * </ul>
+     * «Intensidad» escala las dos cosas (2,2 = lo de aquí).
+     */
+    /**
+     * Inclinación máxima de la hoja (arriba al fondo): arriba se ve hasta un 20 % más pequeña y
+     * abajo un 33 % más grande (1/(1 ± 0,25)), si cabe en la pantalla. Con Intensidad 2,2.
+     * Con 0,3 apenas se notaba al salir: el ojo necesita que arriba mida ~⅔ de abajo.
+     */
+    private static final float DEPTH_TILT = 0.5f;
+    /** Al abrir, la hoja sale ya inclinada esto (muy sutil, un 5 %). */
+    private static final float DEPTH_TILT_START = 0.05f;
+    /**
+     * Muelle de la inclinación: periodo (s) y amortiguamiento. Algo de rebote (0,55): la hoja
+     * tiene peso, se inclina con retraso al empezar a moverse y se endereza pasándose un poco.
+     */
+    private static final float TILT_RESPONSE = 0.14f, TILT_DAMPING = 0.6f; // el cierre dura ~0,25 s: con 0,2 no llegaba a doblarse
+    /** Velocidad (en alturas de pantalla por segundo) a la que la curvatura llega a su máximo. */
+    private static final float DEPTH_SPEED = 2.2f;
+    /** Obturador del desenfoque, en segundos (~3/4 de un fotograma a 60 Hz). */
+    private static final float DEPTH_SHUTTER_S = 0.0125f;
+    /** Estela máxima, en fracción de la altura de pantalla: con tirones no se emborrona de más. */
+    private static final float DEPTH_MAX_BLUR = 0.09f;
+    /** Profundidad: oscurecido del escritorio, muy suave (el desenfoque del fondo ya lo pone HyperOS). */
+    private static final float DEPTH_DIM = 0.06f;
     /**
      * Ice: copa algo más suave que la de Samsung (arriba se adelanta un poco menos, abajo se
      * estrecha menos y el contenido se lee siempre), el escritorio se oscurece detrás
@@ -649,7 +686,8 @@ final class Genie {
 
     /** Oscurecido del escritorio detrás de la copa (solo Ice): va con lo abierta que está. */
     private static float dimFor(float pw) {
-        return style == STYLE_ICE ? ICE_DIM * Math.max(0f, Math.min(1f, pw)) : 0f;
+        float k = style == STYLE_ICE ? ICE_DIM : style == STYLE_DEPTH ? DEPTH_DIM : 0f;
+        return k * Math.max(0f, Math.min(1f, pw));
     }
 
     /** La sesión de este animador vuelve a un icono y aún no sabe cuál es su vista. */
@@ -847,6 +885,62 @@ final class Genie {
         // Velocidad de los bordes del rectángulo de MIUI (px/s): para que el genio suelto siga
         // igual y para predecir el rectángulo entre dos fotogramas de MIUI (ver predict).
         private final float[] edgeVel = new float[4];
+        /**
+         * Profundidad: velocidad de cada borde tal como se ve en pantalla (px/s), medida entre dos
+         * dibujos nuestros, no entre fotogramas de MIUI. MIUI manda fotogramas a trompicones; con
+         * su velocidad la estela se apagaba de golpe en un hueco y se quedaba puesta al final. Con
+         * la de los dibujos, si la ventana no se mueve en pantalla, no hay estela: es lo que haría
+         * una cámara.
+         */
+        private final float[] velNow = new float[4];
+        private final RectF prevDraw = new RectF();
+        private long prevDrawNs;
+
+        private void drawVelocity(RectF cur) {
+            long now = System.nanoTime();
+            float dt = (now - prevDrawNs) / 1e9f;
+            if (prevDrawNs == 0 || dt > 0.1f) {
+                java.util.Arrays.fill(velNow, 0f);        // primer dibujo o tras una pausa larga
+            } else if (dt > 0.004f) {
+                // Suavizado ligero (60 %): sigue los cambios sin temblar con un fotograma irregular.
+                velNow[0] = lerp(velNow[0], (cur.left - prevDraw.left) / dt, 0.6f);
+                velNow[1] = lerp(velNow[1], (cur.top - prevDraw.top) / dt, 0.6f);
+                velNow[2] = lerp(velNow[2], (cur.right - prevDraw.right) / dt, 0.6f);
+                velNow[3] = lerp(velNow[3], (cur.bottom - prevDraw.bottom) / dt, 0.6f);
+            }
+            prevDraw.set(cur);
+            prevDrawNs = now;
+        }
+        // Profundidad: inclinación de la hoja (y su velocidad) que lleva el muelle, en el hilo de dibujo.
+        private float tiltNow, tiltSpeed;
+        private long tiltNs;
+
+        /**
+         * Muelle de la hoja: la inclinación persigue la que pide la velocidad ({@code tiltTarget})
+         * con peso, en pasos de 4 ms (estable aunque un fotograma llegue tarde). Al abrir parte
+         * ya un poco inclinada; al cerrar, recta. Sigue redibujando hasta quedarse quieta.
+         */
+        void tiltSpring(GlRenderer.Geo g) {
+            long now = System.nanoTime();
+            if (tiltNs == 0) {
+                tiltNow = startedOpen ? g.tiltStart : 0f;
+                tiltSpeed = 0f;
+            } else {
+                float dt = Math.min(0.05f, (now - tiltNs) / 1e9f);
+                float w = (float) (2 * Math.PI / TILT_RESPONSE);
+                float k = w * w, c = 2f * TILT_DAMPING * w;
+                while (dt > 0f) {
+                    float step = Math.min(dt, 0.004f);
+                    tiltSpeed += (k * (g.tiltTarget - tiltNow) - c * tiltSpeed) * step;
+                    tiltNow += tiltSpeed * step;
+                    dt -= step;
+                }
+            }
+            tiltNs = now;
+            applyTilt(g, tiltNow);
+            if (Math.abs(tiltNow - g.tiltTarget) > 0.002f || Math.abs(tiltSpeed) > 0.02f) dirty = true;
+        }
+
         private final RectF prevCur = new RectF();
         private long prevCurNs;
         /** Cuándo llegó la última muestra de MIUI (System.nanoTime, bajo lock). */
@@ -1354,9 +1448,13 @@ final class Genie {
                     uploadIcon();
                 }
             }
-            shape(cur, icon, full, dir, ramp, lift, radius, bend, flip, iconReady, geoNow);
+            if (style == STYLE_DEPTH) drawVelocity(cur);
+            shape(cur, icon, full, dir, ramp, lift, radius, bend, flip, iconReady, velNow, geoNow);
+            if (style == STYLE_DEPTH) tiltSpring(geoNow);
             geoNow.fade = windowSinceNs == 0 ? 1f : smooth((System.nanoTime() - windowSinceNs) / 1e9f / CONTENT_FADE_S);
             if (geoNow.fade < 1f) dirty = true;                  // seguir dibujando hasta acabar el fundido
+            // Con estela, otro fotograma: así se apaga sola aunque MIUI deje de mandar fotogramas.
+            if (geoNow.vel[0] != 0f || geoNow.vel[1] != 0f || geoNow.vel[2] != 0f || geoNow.vel[3] != 0f) dirty = true;
             long t0 = System.nanoTime();
             if (lastDrawNs != 0) {
                 long gap = t0 - lastDrawNs;
@@ -1574,15 +1672,98 @@ final class Genie {
     }
 
     /**
+     * Estilo Profundidad (ver {@link #STYLE_DEPTH}): el rectángulo de MIUI tal cual (su
+     * animación normal), con desenfoque según la velocidad de cada borde ({@code vel}, px/s, ya
+     * suavizada) y la inclinación que pide su velocidad ({@link GlRenderer.Geo#tiltTarget}). La
+     * inclinación de verdad la lleva un muelle en la sesión ({@link Session#tiltSpring}); aquí
+     * se pone ya la pedida, para quien dibuje sin muelle (el genio que vuelve solo).
+     */
+    private static void depth(RectF cur, RectF icon, RectF full, float dir, float ramp, float radius,
+                              boolean iconReady, float[] vel, float pw, GlRenderer.Geo out) {
+        out.cur.set(cur);
+        out.icon.set(icon);
+        out.pw = pw;
+        out.lead = out.lag = 1f;
+        out.cup = 2f;
+        out.radius = radius;
+        // Como en HyperOS: al salir, el icono crece y se funde con la app; al volver, al revés.
+        out.iconMix = iconMix(pw, dir, iconReady);
+        out.splashIcon = 0f;
+        out.bend = 0f;
+        out.flip = 0f;
+        out.tiltTarget = out.tiltStart = 0f;
+        out.tiltEnv = 1f;
+        if (vel == null) return;
+        float amt = strength / 2.2f * ramp;
+        // Muy cerca del icono la estela se apaga: aterriza nítido, sin «manchar» el icono. Y al
+        // abrir, en el último tramo (el muelle llegando a pantalla completa), también: la app
+        // queda nítida justo cuando la ventana de verdad la sustituye.
+        float env = smooth((pw - 0.04f) / 0.16f) * lerp(smooth((1f - pw) / 0.07f), 1f, dir);
+        float h = Math.max(1f, full.height());
+        float maxBlur = DEPTH_MAX_BLUR * h;
+        float sum = 0f, most = 0f;
+        for (int i = 0; i < 4; i++) {
+            float v = vel[i] * DEPTH_SHUTTER_S * amt * env;
+            out.vel[i] = Math.max(-maxBlur, Math.min(maxBlur, v));
+            most = Math.max(most, Math.abs(out.vel[i]));
+            sum += Math.abs(vel[i]);
+        }
+        // Menos de medio píxel de estela no se ve: a cero, y así se deja de redibujar.
+        if (most < 0.5f) java.util.Arrays.fill(out.vel, 0f);
+        // La hoja: rígida, solo rota sobre su centro (sin curvarse), y siempre hacia el mismo lado:
+        // arriba hacia el fondo y abajo hacia ti, esté donde esté el icono (como en el vídeo de
+        // HyperOS 4: al salir de la app, arriba se ve más estrecha que abajo).
+        float speed = smooth(sum * 0.25f / h / DEPTH_SPEED);
+        // Al salir se dobla enseguida: en cuanto deja la pantalla completa (away sube a tope en
+        // el primer 12 % del recorrido), sin esperar a coger velocidad; un gesto fuerte la
+        // dobla más (speed). Al abrir, solo con la velocidad: se va enderezando al frenar.
+        float away = smooth((1f - pw) / 0.12f) * 0.85f;
+        out.tiltTarget = DEPTH_TILT * amt * lerp(speed, Math.max(speed, away), dir);
+        // Al abrir sale ya un poco inclinada (muy sutil): el muelle empieza ahí.
+        out.tiltStart = DEPTH_TILT_START * amt;
+        // Pegada al icono, plana (al cerrar); a pantalla completa, plana (al abrir).
+        out.tiltEnv = lerp(1f, smooth((pw - 0.04f) / 0.16f), dir) * lerp(smooth((1f - pw) / 0.05f), 1f, dir);
+        // Hueco: el borde de abajo, que se acerca, nunca más grande que la pantalla. Al girar
+        // sobre el centro, abajo se ve 1/(1 − k/2) de grande; cabe si k ≤ 2·(1 − tamaño/pantalla).
+        // Así, a pantalla completa es plana y se puede doblar más cuanto más pequeña es.
+        float fill = Math.max(cur.width() / Math.max(1f, full.width()), cur.height() / h);
+        out.tiltRoom = Math.max(0f, 2f * (1f - fill));
+        applyTilt(out, out.tiltTarget);
+    }
+
+    /**
+     * Pone la hoja inclinada {@code a}: cuánto más lejos está arriba que abajo, en fracción de la
+     * distancia a la cámara (+ = arriba al fondo), sin pasar del hueco ({@code tiltRoom}).
+     * Rotación rígida sobre el centro: z = inclinación·y0, lineal (ver GlRenderer.PERSP); el
+     * centro se queda a la distancia del rectángulo de MIUI, arriba se aleja y abajo se acerca.
+     * Sin empuje: si la ventana entera se alejara al inclinarse, se vería encoger y volver a
+     * crecer (un zoom raro).
+     */
+    private static void applyTilt(GlRenderer.Geo g, float a) {
+        float hh = Math.max(1f, g.cur.height() * 0.5f);
+        float k = Math.max(-g.tiltRoom, Math.min(g.tiltRoom, a * g.tiltEnv));
+        g.tilt = -k / (2f * hh);                            // y0 < 0 es arriba: allí z = +k/2
+        g.curl = 0f;
+        g.push = 0f;
+    }
+
+    /**
      * Forma del genio a partir del rectángulo de MIUI ({@code cur}, se modifica): extremo lejano
      * adelantado y cercano retrasado, en horizontal (shader) y en vertical (aquí, como
      * desplazamiento sobre el rectángulo: con fuerza 0 es el de MIUI), más la lámpara.
      */
     private static void shape(RectF cur, RectF icon, RectF full, float dir, float ramp, float lift,
-                              float radius, float bend, float flip, boolean iconReady, GlRenderer.Geo out) {
+                              float radius, float bend, float flip, boolean iconReady, float[] vel, GlRenderer.Geo out) {
         float pw = progress(cur.width(), icon.width(), full.width());
         float ph = progress(cur.height(), icon.height(), full.height());
         float g = strength * ramp;
+        // Curvatura y estela solo en Profundidad: en los demás estilos, a cero.
+        out.tilt = out.curl = out.push = 0f;
+        java.util.Arrays.fill(out.vel, 0f);
+        if (style == STYLE_DEPTH) {
+            depth(cur, icon, full, dir, ramp, radius, iconReady, vel, pw, out);
+            return;
+        }
         if (style != STYLE_CLASSIC) {
             // Como Samsung (vídeo a cámara lenta): esté donde esté el icono, al abrir lo primero
             // sube rápido el borde de arriba y, al llegar, baja el resto; al cerrar, abajo entra
@@ -1763,7 +1944,7 @@ final class Genie {
             float pw = progress(cur.width(), icon.width(), full.width());
             lastPw = pw;
             tmp.set(cur);
-            shape(tmp, icon, full, 1f, 1f, 0f, lerp(iconRadius, startRadius, pw), bend, flipFor(icon, full), iconReady, geo);
+            shape(tmp, icon, full, 1f, 1f, 0f, lerp(iconRadius, startRadius, pw), bend, flipFor(icon, full), iconReady, vel, geo);
             boolean ok = GlRenderer.drawGenie(content, true, geo, full.width() * 0.5f, full.height(), bg);
             if (arrived) {
                 Haptics.land();
