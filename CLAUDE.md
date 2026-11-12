@@ -56,7 +56,7 @@ Módulo LSPosed para HyperOS (antes HyperTweak). Añade animaciones al launcher 
 - **Nunca bloquees ni lances excepciones en un hook de SystemUI o del launcher.** Un fallo repetido activa el modo seguro y apaga esa parte.
 - **Hilos:**
   - El genio dibuja en `IceHome-genie` y captura en `IceHome-capture`.
-  - El centro de control captura en `KashiPlusGlass`.
+  - El centro de control captura en `HyperSpring-ccglass`.
   - Nada de trabajo pesado en el hilo principal.
 - **Hilos nuevos, siempre con `Threads.start`:** un hilo hereda las CPU permitidas de quien lo crea, y durante una animación HyperOS ata el hilo principal a los núcleos grandes. Con `new HandlerThread` en mitad de una animación, el hilo se queda atado a cpu6-7 para siempre (era la causa de los tirones del genio).
 - **Medir antes de cambiar:** el registro de cada animación da fotogramas, tirones y tiempos. Para ir más a fondo, una traza de perfetto (`perfetto ... sched freq gfx view -a com.miui.home`) enseña si un hilo espera CPU (estado R) o búfer.

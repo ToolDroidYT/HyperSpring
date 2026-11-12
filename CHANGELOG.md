@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+**New**
+- **Updates from inside the app.**
+  - HyperSpring checks GitHub for a new release when you open it, at most every 6 hours. You can turn that off, or check by hand, in About → Settings.
+  - When there is one, a notice appears on Home and a sheet slides up. The logo pulses, the version number rolls over to the new one and the changes appear one by one.
+  - "Download and install" turns into a progress bar, then opens Android's installer. It downloads the same APK you have (`HyperSpring.apk` or `HyperSpring-legacy.apk`).
+  - As the version rolls over, a burst of coral, pink and mauve sparks and confetti flies out of the logo and drifts down.
+  - After updating, a "What's new" sheet shows the changes once.
+  - The app now asks for internet access (only to reach GitHub) and for permission to hand the update to the installer, which always asks you to confirm.
+- **Predictive back in the app (Android 14+).** While you swipe back from the edge, the page follows your finger: it shrinks, its corners round off and the previous page comes forward behind it. Let go and it springs away; change your mind and it springs back. The update sheet sinks a little with your finger too.
+- **Animated welcome.** The first time the app opens, a coral drop falls, bounces and turns into the icon, which rises to its place. The name comes in white, blurred with its letters spread out and closes up into focus, and three highlights appear one by one. Behind it, soft coral, pink and mauve light drifts across a dark background.
+- **Guided setup** in four more steps. Each one has a line icon on a coral tile, a big title and its pieces coming in one after another. Dots at the bottom stretch like a drop when you change step.
+  - Going from the welcome to the first step, the welcome shrinks into a rounded card and fades while the step zooms in, like HyperCeiler. Between the other steps, pages slide in with a spring.
+  - **Checkup:** whether the module is loaded in the launcher and System UI, and root access (asks for it).
+  - **Style:** the presets, each with a tiny window that opens and closes with that preset's speed and bounce. "Keep my settings" is the default, so nothing changes unless you pick one.
+  - **Features:** the same switches as on Home.
+  - **All set:** offers to restart the launcher and System UI.
+  - It can be replayed from About → Settings → Replay the tour.
+- **Redesigned app with a fixed dark theme:** the coral of the icon as the main colour, with soft pink and mauve. It looks the same on every phone, whatever the wallpaper.
+  - **Real liquid glass in switches and sliders.** While you hold it, the white knob turns into a clear drop that refracts the track: it magnifies the middle and bends it at the edge, with the same lens as the tab bar (Android 13+). Sliders also stretch with the speed of your finger.
+  - **No colour fringes** on the app's glass: the tab bar, its bubble, switches and sliders. The control center glass is unchanged.
+  - **Backgrounds:** About has soft coral, pink and mauve light that wanders across the whole screen, behind an opaque logo. The other pages have fine coral contour lines that flow endlessly, instead of the dot network.
+  - **Progressive blur under the status bar:** content scrolling up blurs more and more, with no hard edge.
+  - Row icons are coral on matching soft tiles, all alike, and group headers are coral. Cards are slightly see-through.
+  - Cards and rows come in one after another. Big titles drift and fade as you scroll, and deeper pages push the previous one back.
+  - Everything follows the system animation scale and stops when animations are turned off.
+
+**Changes**
+- The names of the old modules this app replaced are gone from the app and the docs. Log lines now start with `HyperSpring UI:` and `HyperSpring CC:`.
+
+**Roadmap:** new "Planned" section (glass dock, glass notifications, predictive back with physics, exclusion list, automatic pause and more).
+
 ## 2.0.0
 
 A major version because the way the module loads has changed: it now uses the modern Xposed API. It includes everything from 1.1.0-beta1.
@@ -95,7 +128,7 @@ The stutters that remain are waits behind real-time system threads and the GPU, 
 
 ## 1.0.0
 
-First public release. It merges three earlier modules into one app: Ice Home, Telón and KashiPlus. The package stays `com.icehome.up`, so it installs over Ice Home and keeps its settings.
+First public release. It merges three earlier modules into one app. The package stays `com.icehome.up`, so it installs over Ice Home and keeps its settings.
 
 **Launcher**
 - Genie effect when opening and closing apps:
@@ -134,7 +167,7 @@ First public release. It merges three earlier modules into one app: Ice Home, Te
 
 ## 1.0.0 (español)
 
-Primera versión pública. Reúne en una sola app tres módulos anteriores: Ice Home, Telón y KashiPlus. El paquete sigue siendo `com.icehome.up`, así que se instala encima de Ice Home y conserva sus ajustes. Los cambios son los de arriba.
+Primera versión pública. Reúne en una sola app tres módulos anteriores. El paquete sigue siendo `com.icehome.up`, así que se instala encima de Ice Home y conserva sus ajustes. Los cambios son los de arriba.
 
 Lo principal:
 - La app está en inglés y español.

@@ -606,12 +606,12 @@ public final class Telon {
     }
 
     private static synchronized Handler renderHandler() {
-        if (renderThread == null) renderThread = start("Telon-render", Process.THREAD_PRIORITY_URGENT_DISPLAY);
+        if (renderThread == null) renderThread = start("HyperSpring-curtain", Process.THREAD_PRIORITY_URGENT_DISPLAY);
         return renderThread;
     }
 
     private static synchronized Handler captureHandler() {
-        if (captureThread == null) captureThread = start("Telon-capture", Process.THREAD_PRIORITY_DISPLAY);
+        if (captureThread == null) captureThread = start("HyperSpring-curtaincap", Process.THREAD_PRIORITY_DISPLAY);
         return captureThread;
     }
 

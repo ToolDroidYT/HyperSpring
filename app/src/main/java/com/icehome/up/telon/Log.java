@@ -23,7 +23,7 @@ public final class Log {
     /** Desde que SystemUI tiene Application, las líneas se mandan también a la app. */
     public static synchronized void attach(Context c) {
         app = c.getApplicationContext();
-        HandlerThread t = new HandlerThread("Telon-log");
+        HandlerThread t = new HandlerThread("HyperSpring-uilog");
         t.start();
         sender = new Handler(t.getLooper());
         for (String l : early) send(l);
@@ -31,22 +31,22 @@ public final class Log {
     }
 
     public static void i(String msg) {
-        out("Telon: " + msg);
+        out("HyperSpring UI: " + msg);
     }
 
     public static void w(String msg) {
-        out("Telon [aviso]: " + msg);
+        out("HyperSpring UI [aviso]: " + msg);
     }
 
     public static void e(String msg, Throwable t) {
-        out("Telon [error]: " + msg + " — " + t);
+        out("HyperSpring UI [error]: " + msg + " — " + t);
         XposedBridge.log(t);
     }
 
     private static void out(String line) {
         XposedBridge.log(line);
         String stamped = new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT)
-                .format(new java.util.Date()) + "  " + line.replace("Telon: ", "");
+                .format(new java.util.Date()) + "  " + line.replace("HyperSpring UI: ", "");
         synchronized (Log.class) {
             if (sender == null) {
                 if (early.size() < 50) early.add(stamped);

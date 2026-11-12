@@ -15,6 +15,42 @@ The bar for getting on this list: a fair number of people will use it, it can be
 - [ ] **POCO Launcher support**, bringing in the work from the community fork ([ToolDroidYT/hyperspring](https://github.com/ToolDroidYT/hyperspring)).
 - [ ] **Automatic builds on GitHub** on every change, to catch mistakes before a release. Release APKs are still signed separately.
 
+## Planned
+Ideas noted on 2026-11-11. Not started yet, in no fixed order. Before the home screen ones, check what Kashi's Launcher Mod already includes.
+
+### Liquid glass
+- [ ] **Glass dock:** the launcher dock as a floating bar with edge refraction, using the same shader as the app's bar.
+- [ ] **Glass notifications:** shade cards and the heads-up popup, with blur and a lit edge. To keep it light, every card has to share a single capture of the background.
+- [ ] **Refraction on folders:** add the edge lens to the blur they already have.
+- [ ] **Magnifier on control center sliders:** while dragging brightness or volume, the control turns into a glass drop that magnifies what is behind it. Note: it depends on System UI plugin classes that change between versions.
+- [ ] **Glass styles:** Clear, Smoked, Frosted, Monet tint and Prism (more dispersion), picked with one tap.
+- [ ] **Highlight that follows your finger:** the glow on the glass edge moves towards where you touch. No gyroscope, so no battery cost.
+
+### Animations
+- [ ] **Notifications with a genie-style animation (or something like it), iOS style:** opening a notification makes the app come out of the card; dismissing it folds the card away.
+- [ ] **Springy notifications:** the heads-up popup comes in with a small bounce.
+- [ ] **Fade when opening the control center**, with a ColorOS 17 style animation.
+- [ ] **Genie into folders:** closing an app that lives inside a folder sends the window back to the folder.
+- [ ] **Genie on widgets:** opening an app from a widget makes the window come out of the widget.
+- [ ] **Predictive back gesture with physics:**
+  - On the Redmi 14C HyperOS ships no predictive back animations, so they have to be created as well, not just restyled.
+  - While the gesture is dragged, the screen shrinks and tilts with the finger (using the curtain physics). On release it springs back or closes.
+- [ ] **Home screen page transitions** where icons stretch with the swipe speed.
+- [ ] **Dark mode with a circular wave:** when the theme changes, the new palette spreads in a circle from the control center button.
+- [ ] **Gentle zoom on unlock:** the home screen comes in with a slight scale, without animating each icon.
+
+### Features
+- [ ] **Excluded apps list:** apps with no genie or no curtain (games, camera, video).
+- [ ] **Automatic pause:** heavy effects switch off by themselves with battery saver, in games (Game Turbo) or when the phone is hot.
+- [ ] **Subtle vibration** in sync with the animations: when the genie lands in the icon, when a folder bounces, when the widget stack changes.
+- [ ] **Visual spring editor:** an animated graph of the curve while you move stiffness and damping.
+- [ ] **Quick settings tile** to turn HyperSpring on or off and restart the launcher.
+- [x] **New version notice:** checks GitHub releases (can be turned off), and downloads and installs from the app. *Done, not released yet.*
+- [x] **What's new after updating:** an animated screen with the changes the first time the app opens after an update. *Done, not released yet.*
+
+### The app
+- [ ] **Redesigned, heavily animated interface**, like modern websites: staggered entrances, scroll-driven animations, shared transitions between screens and micro-interactions on every control. Always 60 fps on mid-range phones and respecting the system setting that removes animations.
+
 ## Later, if there is demand
 - [ ] **Automatic quality:** lower the genie resolution on its own when the log shows many stutters in a row. For now the "Performance" preset covers it.
 - [ ] **In-app preview.** It means duplicating the animations outside the launcher; with presets and live changes, the benefit is small.

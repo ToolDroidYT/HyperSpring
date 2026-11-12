@@ -102,11 +102,8 @@ HyperSpring añade al launcher y a la interfaz del sistema de HyperOS animacione
 4. Abre HyperSpring y concede root cuando lo pida (solo se usa para reiniciar el launcher y la interfaz).
 5. En **Acerca de → Compatibilidad**, cada parte debería aparecer como **Activo**.
 
-### Si vienes de Ice Home, Telón o KashiPlus
-HyperSpring reúne esos tres módulos en uno.
-- **Ice Home:** HyperSpring se instala encima y conserva sus ajustes, porque usa el mismo paquete (`com.icehome.up`).
-- **Telón y KashiPlus:** desinstálalos y quítalos de LSPosed. Mientras sigan instalados, HyperSpring no carga esa parte para no engancharse dos veces, y la app te avisa.
-- **Ámbitos:** al actualizar, LSPosed **no** marca solo el ámbito nuevo. Revisa que estén los dos.
+### Si vienes de Ice Home
+HyperSpring se instala encima y conserva sus ajustes, porque usa el mismo paquete (`com.icehome.up`). Al actualizar, LSPosed **no** marca solo el ámbito nuevo: revisa que estén los dos.
 
 ### Actualizar
 Instala la versión nueva encima y reinicia el launcher y la interfaz desde la pestaña **Inicio**, o reinicia el móvil. Si alguna parte sigue con la versión anterior, la app te avisa.

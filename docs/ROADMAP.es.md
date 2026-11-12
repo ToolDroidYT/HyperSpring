@@ -15,6 +15,42 @@ Criterio para entrar aquí: que lo vaya a usar bastante gente, que se pueda mant
 - [ ] **Soporte de POCO Launcher**, integrando el trabajo del fork de la comunidad ([ToolDroidYT/hyperspring](https://github.com/ToolDroidYT/hyperspring)).
 - [ ] **Compilación automática en GitHub** en cada cambio, para detectar errores antes de publicar. Los APK de las releases se siguen firmando aparte.
 
+## Planeado
+Ideas apuntadas el 11-11-2026. Están sin empezar y sin orden fijo. Antes de hacer las del escritorio, hay que revisar qué trae ya el Launcher Mod de Kashi.
+
+### Cristal líquido
+- [ ] **Dock de cristal:** el dock del launcher como barra flotante con refracción en el borde, con el mismo shader que la barra de la app.
+- [ ] **Notificaciones de cristal:** las tarjetas de la sombra y la notificación emergente (heads-up), con desenfoque y borde iluminado. Para que no pese, todas las tarjetas tienen que usar una sola captura del fondo.
+- [ ] **Refracción en las carpetas:** añadir la lente del borde al desenfoque que ya tienen.
+- [ ] **Lupa en los sliders del CC:** al arrastrar el brillo o el volumen, el control se convierte en una gota de cristal que aumenta lo que tiene debajo. Ojo: depende de clases del plugin de SystemUI que cambian entre versiones.
+- [ ] **Estilos de cristal:** Transparente, Ahumado, Esmerilado, Tinte Monet y Prisma (con más dispersión), elegibles con un toque.
+- [ ] **Brillo que sigue al dedo:** el reflejo del borde del cristal se mueve hacia donde tocas. Sin giroscopio, así que no gasta batería.
+
+### Animaciones
+- [ ] **Notificaciones con animación de genio, o una parecida, al estilo de iOS:** al abrir una notificación la app sale de la tarjeta; al descartarla, la tarjeta se recoge.
+- [ ] **Notificaciones con muelle:** la emergente entra con un pequeño rebote.
+- [ ] **Fundido al abrir el CC** con una animación al estilo de ColorOS 17.
+- [ ] **Genio hacia la carpeta:** al cerrar una app que está dentro de una carpeta, la ventana vuelve a la carpeta.
+- [ ] **Genio en los widgets:** al abrir una app desde un widget, la ventana sale del widget.
+- [ ] **Gesto de atrás predictivo con físicas:**
+  - En el Redmi 14C, HyperOS no trae animaciones de atrás predictivas, así que hay que crearlas también, no solo cambiar las que ya existen.
+  - Mientras se arrastra el gesto, la pantalla se encoge y se inclina siguiendo el dedo (con la física del telón). Al soltar, vuelve con muelle o se cierra.
+- [ ] **Transiciones entre páginas del escritorio** en las que los iconos se estiran según la velocidad del deslizamiento.
+- [ ] **Modo oscuro con onda circular:** al cambiar el tema, la paleta nueva se extiende en círculo desde el botón del CC.
+- [ ] **Zoom suave al desbloquear:** el escritorio entra con una escala ligera, sin animar cada icono.
+
+### Funciones
+- [ ] **Lista de apps excluidas:** apps sin genio o sin telón (juegos, cámara, vídeo).
+- [ ] **Pausa automática:** los efectos pesados se apagan solos con el ahorro de batería, en juegos (Game Turbo) o con el móvil caliente.
+- [ ] **Vibración sutil** sincronizada con las animaciones: cuando el genio aterriza en el icono, cuando rebota una carpeta, cuando cambia la pila de widgets.
+- [ ] **Editor visual del muelle:** una gráfica animada de la curva mientras mueves la rigidez y la amortiguación.
+- [ ] **Tile en los ajustes rápidos** para activar o desactivar HyperSpring y reiniciar el launcher.
+- [x] **Aviso de versión nueva:** consulta las releases de GitHub (se puede desactivar), y descarga e instala desde la app. *Hecho, sin publicar todavía.*
+- [x] **Novedades al actualizar:** al abrir la app tras actualizarla, una pantalla animada con lo nuevo. *Hecho, sin publicar todavía.*
+
+### La app
+- [ ] **Interfaz renovada, muy animada**, como las webs modernas: entradas escalonadas, animaciones al desplazarse, transiciones compartidas entre pantallas y microinteracciones en cada control. Siempre a 60 fps en gama media y respetando el ajuste del sistema que quita las animaciones.
+
 ## Más adelante, si hay demanda
 - [ ] **Calidad automática:** bajar sola la resolución del genio cuando el registro detecte muchos tirones seguidos. Por ahora lo cubre el perfil «Rendimiento».
 - [ ] **Vista previa dentro de la app.** Obliga a duplicar las animaciones fuera del launcher; con los perfiles y los cambios en vivo, el beneficio es pequeño.

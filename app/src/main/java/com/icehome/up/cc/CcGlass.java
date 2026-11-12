@@ -178,7 +178,7 @@ public final class CcGlass {
         once(what, t);
         if (++shaderFails >= SHADER_FAILS_MAX && !shaderBroken) {
             shaderBroken = true;
-            note("KashiPlus CC: shader desactivado tras " + SHADER_FAILS_MAX + " fallos seguidos (" + what + ")");
+            note("HyperSpring CC: shader desactivado tras " + SHADER_FAILS_MAX + " fallos seguidos (" + what + ")");
         }
     }
 
@@ -246,7 +246,7 @@ public final class CcGlass {
                 once("drawBackground", t);
             }
         }
-        note("KashiPlus CC: desenfoque MIUI " + (frameworkHooked ? "enganchado" : "no encontrado")
+        note("HyperSpring CC: desenfoque MIUI " + (frameworkHooked ? "enganchado" : "no encontrado")
                 + ", material nativo " + (setGlass != null ? "presente" : "ausente") + (hasNative() ? " (en uso)" : " (motor propio)"));
     }
 
@@ -272,7 +272,7 @@ public final class CcGlass {
         } catch (Throwable t) {
             once("icon hooks", t);
         }
-        note("KashiPlus CC: plugin enganchado");
+        note("HyperSpring CC: plugin enganchado");
         com.icehome.up.telon.Log.state("cc_seen", System.currentTimeMillis() + "|" + (XposedHelpers.findClassIfExists("com.kashi.ios.Ios", cl) != null ? "ios" : "stock"));
     }
 
@@ -670,7 +670,7 @@ public final class CcGlass {
             }
         } catch (Throwable ignored) {
         }
-        note("KashiPlus CC: estilo cristal del mod iOS forzado (" + n + " hooks)");
+        note("HyperSpring CC: estilo cristal del mod iOS forzado (" + n + " hooks)");
     }
 
     /**
@@ -768,7 +768,7 @@ public final class CcGlass {
             });
             n++;
         }
-        note("KashiPlus CC: mod iOS/miuix (" + n + " hooks)");
+        note("HyperSpring CC: mod iOS/miuix (" + n + " hooks)");
     }
 
     // ---------------------------------------------------------------- captura al abrir
@@ -937,7 +937,7 @@ public final class CcGlass {
         final android.util.DisplayMetrics dm = cc.getResources().getDisplayMetrics();
         if (worker == null) {
             // Desde la semilla: con todas las CPU (ver com.icehome.up.Threads).
-            worker = com.icehome.up.Threads.start("KashiPlusGlass", android.os.Process.THREAD_PRIORITY_DEFAULT);
+            worker = com.icehome.up.Threads.start("HyperSpring-ccglass", android.os.Process.THREAD_PRIORITY_DEFAULT);
         }
         worker.post(new Runnable() {
             @Override
@@ -968,7 +968,7 @@ public final class CcGlass {
                         @Override
                         public void run() {
                             if (backdrop == null) {
-                                note("KashiPlus CC: captura de fondo OK " + small.getWidth() + "x" + small.getHeight());
+                                note("HyperSpring CC: captura de fondo OK " + small.getWidth() + "x" + small.getHeight());
                             }
                             backdrop = small;
                             backdropScale = scale;
@@ -987,7 +987,7 @@ public final class CcGlass {
                     once("capture", t);
                     if (++captureFails >= CAPTURE_FAILS_MAX) {
                         captureBroken = true;
-                        note("KashiPlus CC: captura desactivada tras " + CAPTURE_FAILS_MAX + " fallos seguidos");
+                        note("HyperSpring CC: captura desactivada tras " + CAPTURE_FAILS_MAX + " fallos seguidos");
                     }
                     captureDone();
                 }
@@ -1064,7 +1064,7 @@ public final class CcGlass {
     public static void retune(final android.content.Context ctx) {
         if (worker == null) {
             // Desde la semilla: con todas las CPU (ver com.icehome.up.Threads).
-            worker = com.icehome.up.Threads.start("KashiPlusGlass", android.os.Process.THREAD_PRIORITY_DEFAULT);
+            worker = com.icehome.up.Threads.start("HyperSpring-ccglass", android.os.Process.THREAD_PRIORITY_DEFAULT);
         }
         worker.post(new Runnable() {
             @Override
@@ -1204,7 +1204,7 @@ public final class CcGlass {
             }, "updateBlendBlur");
             Deopt.all(holder);
         }
-        note("KashiPlus CC: clases de serie enganchadas");
+        note("HyperSpring CC: clases de serie enganchadas");
     }
 
     // ---------------------------------------------------------------- aplicar
@@ -1766,7 +1766,7 @@ public final class CcGlass {
         try {
             return XposedHelpers.findClass(name, cl);
         } catch (Throwable t) {
-            note("KashiPlus CC: no existe " + name);
+            note("HyperSpring CC: no existe " + name);
             return null;
         }
     }
@@ -1785,7 +1785,7 @@ public final class CcGlass {
     private static void dumpState() {
         if (dumps >= 3) return;
         dumps++;
-        StringBuilder sb = new StringBuilder("KashiPlus CC: estado #" + dumps + " captura="
+        StringBuilder sb = new StringBuilder("HyperSpring CC: estado #" + dumps + " captura="
                 + (backdrop != null ? backdrop.getWidth() + "x" + backdrop.getHeight() : "no")
                 + " capturaRota=" + captureBroken + " shaderRoto=" + shaderBroken + " piezas=" + SKINS.size());
         XposedBridge.log(sb.toString());
@@ -1804,7 +1804,7 @@ public final class CcGlass {
                         ? "[" + ((android.graphics.drawable.LayerDrawable) d).getDrawable(0).getClass().getSimpleName() + "]" : ""));
             }
             View par = v.getParent() instanceof View ? (View) v.getParent() : null;
-            XposedBridge.log("KashiPlus CC:  " + v.getClass().getSimpleName() + "<" + (par != null ? par.getClass().getSimpleName() : "-")
+            XposedBridge.log("HyperSpring CC:  " + v.getClass().getSimpleName() + "<" + (par != null ? par.getClass().getSimpleName() : "-")
                     + " " + v.getWidth() + "x" + v.getHeight()
                     + (s.strong ? " mod" : "") + (s.auto ? " auto" : "") + " act=" + String.format(java.util.Locale.ROOT, "%.2f", s.currentActive())
                     + " cristal=" + s.why + " llamadas=" + s.underCalls + " mezclaQuitada=" + s.miCleared
@@ -1821,14 +1821,14 @@ public final class CcGlass {
         String key = v.getClass().getName() + "@" + (v.getParent() != null ? v.getParent().getClass().getName() : "-");
         if (!LOGGED.add("piece " + key)) return;
         reported++;
-        note("KashiPlus CC: cristal en " + key + " " + w + "x" + h);
+        note("HyperSpring CC: cristal en " + key + " " + w + "x" + h);
     }
 
     private static final Set<String> LOGGED = Collections.synchronizedSet(new HashSet<String>());
 
     private static void once(String what, Throwable t) {
         if (LOGGED.add(what)) {
-            XposedBridge.log("KashiPlus CC: fallo en " + what);
+            XposedBridge.log("HyperSpring CC: fallo en " + what);
             XposedBridge.log(t);
             com.icehome.up.telon.Log.e("centro de control: fallo en " + what, t);
         }
@@ -1847,7 +1847,7 @@ public final class CcGlass {
     /** Al registro de LSPosed y al de la app (sin el prefijo antiguo). */
     static void note(String msg) {
         XposedBridge.log(msg);
-        com.icehome.up.telon.Log.i(msg.replace("KashiPlus CC: ", "centro de control: "));
+        com.icehome.up.telon.Log.i(msg.replace("HyperSpring CC: ", "centro de control: "));
     }
 
     private CcGlass() {

@@ -1,4 +1,4 @@
-# Método "liquid glass" (KashiPlus v52)
+# Método "liquid glass" (centro de control)
 
 Receta probada en HyperOS 3 (centro de control y carpetas). Código: `GlassShader.java` (AGSL común), `CcGlass.java` (centro de control), `GlassFolder.java` (carpetas).
 
@@ -25,7 +25,7 @@ Receta probada en HyperOS 3 (centro de control y carpetas). Código: `GlassShade
 - Fondo del centro de control: desenfoque real del sistema + negro al 22 %.
 - Línea de luz: brillo direccional desde la esquina superior izquierda (0,06 + 1,1·f^1,8, eco 0,18 abajo-derecha), 0,6 dp.
 - Sin clipPath en GPU (dentado): formas con antialias propio y máscara SDF en el shader.
-- App de ajustes "Kashi+ Tweaks": SharedPreferences servidas por `PrefsProvider`; SystemUI/launcher las releen al recibir la difusión `com.kashiplus.tweaks.TUNE` (permiso de firma) y se aplican al momento. Botones de reinicio de SystemUI y launcher sin root (`Remote.java`).
+- App de ajustes: SharedPreferences servidas por `PrefsProvider`; SystemUI y el launcher las releen al recibir el aviso de `Remote.send` y se aplican al momento. Botones de reinicio de SystemUI y launcher sin root (`Remote.java`).
 - Ajustes y valores por defecto: `Tune.java`.
 
 ## 5. Siguiente proyecto

@@ -114,10 +114,8 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
 4. Open HyperSpring and grant root when asked (it's only used to restart the launcher and System UI).
 5. In **About → Compatibility**, every part should show **Active**.
 
-### Coming from Ice Home, Telón or KashiPlus
-HyperSpring merges those three modules into one.
-- **Ice Home:** HyperSpring installs over it and keeps your settings, because it uses the same package (`com.icehome.up`).
-- **Telón and KashiPlus:** uninstall them and remove them from LSPosed. While they're installed, HyperSpring doesn't load that part (two hooks on the same thing would break System UI), and the app tells you so.
+### Coming from Ice Home
+HyperSpring installs over it and keeps your settings, because it uses the same package (`com.icehome.up`). LSPosed does **not** tick the new scope by itself: check that both are ticked.
 
 ### Updating
 1. Install the new version over the old one.

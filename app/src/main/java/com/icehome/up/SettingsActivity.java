@@ -42,14 +42,26 @@ public class SettingsActivity extends Activity {
 
     private static final PathInterpolator EASE = new PathInterpolator(0.2f, 0f, 0f, 1f);
 
-    // Colores (Monet en Android 12+; si no, unos fijos parecidos).
-    private int bg, card, pressed, text, text2, text3, accent, onAccent, accentSoft, track, warn;
+    // Colores (Monet en Android 12+; si no, unos fijos parecidos). Sin «private»: la presentación
+    // ({@link Onboarding}) también los usa.
+    int bg, card, pressed, text, text2, text3, accent, onAccent, accentSoft, track, warn;
+    /** Acento intenso (interruptores, deslizadores, botón de la presentación) con texto blanco encima. */
+    int accentStrong;
+    /** Los cuatro tonos suaves de las manchas del fondo (coral, rosa, malva, salmón). */
+    int[] vivid;
 
     private final List<Runnable> refreshers = new ArrayList<>();
     private float dp;
-    private FrameLayout stack;
+    private FrameLayout root, stack;
+    /** La presentación de la primera vez, mientras está en pantalla. */
+    private Onboarding ob;
     private GlassBar bar;
-    private int insetTop, barSpace;
+    private int insetTop, insetBottom, barSpace;
+    /** La hoja de nueva versión o de novedades, mientras está abierta. */
+    private UpdateSheet sheet;
+    /** Columna de Inicio (para meter el aviso de versión nueva cuando llega la respuesta). */
+    private LinearLayout homeCol;
+    private View updateBanner;
     /** La próxima página que se cree lleva los brillos de color de «Acerca de». */
     private boolean glowNext;
     private int tab;
@@ -84,16 +96,24 @@ public class SettingsActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
 
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(bg);
         stack = new FrameLayout(this);
         root.addView(stack, new FrameLayout.LayoutParams(-1, -1));
+        // Desenfoque progresivo bajo la barra de estado: lo que sube al desplazarse se desenfoca
+        // poco a poco en vez de chocar con la hora.
+        final TopBlur topVeil = new TopBlur(this, bg);
+        topVeil.setSource(stack);
+        final FrameLayout.LayoutParams vlp = new FrameLayout.LayoutParams(-1, px(40), Gravity.TOP);
+        root.addView(topVeil, vlp);
 
         bar = new GlassBar(this, tabs(), TAB_ICONS, (card & 0x00FFFFFF) | 0x55000000, text2, accent);
         LiveBackground.setOnFrame(new Runnable() {
             @Override
             public void run() {
-                bar.invalidate();                      // la barra refracta el fondo que se mueve
+                // La barra y el desenfoque de arriba muestran el fondo que se mueve: cada fotograma.
+                bar.invalidate();
+                topVeil.invalidate();
             }
         });
         final FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, bar.heightFor(66), Gravity.BOTTOM);
@@ -113,8 +133,12 @@ public class SettingsActivity extends Activity {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets in) {
                 int top = in.getSystemWindowInsetTop(), bottom = in.getSystemWindowInsetBottom();
+                insetBottom = bottom;
+                if (sheet != null) sheet.setBottomInset(bottom);
                 blp.bottomMargin = bottom + px(2);
                 bar.setLayoutParams(blp);
+                vlp.height = top + px(44);
+                topVeil.setLayoutParams(vlp);
                 if (top != insetTop || barSpace == 0) {
                     insetTop = top;
                     barSpace = bottom + px(2) + bar.heightFor(66);
@@ -124,8 +148,302 @@ public class SettingsActivity extends Activity {
             }
         });
         setContentView(root);
+        // La primera vez (o tras «Ver la presentación»): presentación y configuración guiada.
+        // Si no, la pestaña de Inicio entra con sus tarjetas una a una.
+        boolean first = b == null && !getSharedPreferences("app", 0).getBoolean("onboarded", false);
+        showTab(0, !first && b == null);
+        bar.select(0, false);
+        if (first) showOnboarding();
+        if (b == null) startupUpdates(first);
+        setupBack();
+    }
+
+    // ---------------------------------------------------------------- gesto de atrás
+
+    /**
+     * El gesto de atrás «predictivo» (Android 14 o más). En vez de esperar a que sueltes, el sistema
+     * nos avisa de cada movimiento del dedo y la página lo sigue (ver {@link PredictiveBack}).
+     * <p>
+     * Solo nos apuntamos cuando hay algo que deshacer dentro de la app (una subpágina, otra pestaña,
+     * la hoja de actualización o la presentación). En la raíz nos quitamos, y así el sistema hace su
+     * propia animación de salir al escritorio. Por eso {@link #syncBack} se llama tras cada cambio.
+     * <p>
+     * Para que el sistema use esto hace falta {@code android:enableOnBackInvokedCallback="true"} en
+     * el manifiesto. Con eso, el gesto ya no llama a onBackPressed (el botón de la flecha sí).
+     */
+    private Object backCb;                  // un OnBackAnimationCallback; Object para no romper en Android 11-13
+    private boolean backOn;
+    private PredictiveBack backAnim;
+    private boolean sheetDrag;
+
+    private void setupBack() {
+        if (Build.VERSION.SDK_INT < 34) return;
+        backCb = new android.window.OnBackAnimationCallback() {
+            @Override
+            public void onBackStarted(android.window.BackEvent e) {
+                startBack(e.getSwipeEdge() == android.window.BackEvent.EDGE_LEFT);
+            }
+
+            @Override
+            public void onBackProgressed(android.window.BackEvent e) {
+                if (backAnim != null) backAnim.update(e.getProgress(), e.getTouchY());
+                else if (sheetDrag && sheet != null) sheet.dragBack(e.getProgress());
+            }
+
+            @Override
+            public void onBackInvoked() {
+                finishBack();
+            }
+
+            @Override
+            public void onBackCancelled() {
+                if (backAnim != null) backAnim.cancel();
+                else if (sheetDrag && sheet != null) sheet.cancelDrag();
+                backAnim = null;
+                sheetDrag = false;
+            }
+        };
+        syncBack();
+    }
+
+    /** Se apunta o se quita del gesto según haya algo que deshacer dentro de la app. */
+    private void syncBack() {
+        if (Build.VERSION.SDK_INT < 34 || backCb == null) return;
+        boolean need = sheet != null || ob != null || pages.size() > 1 || tab != 0;
+        if (need == backOn) return;
+        backOn = need;
+        android.window.OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
+        android.window.OnBackInvokedCallback cb = (android.window.OnBackInvokedCallback) backCb;
+        if (need) d.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb);
+        else d.unregisterOnBackInvokedCallback(cb);
+    }
+
+    /** Empieza el gesto: decide qué se va a mover. */
+    private void startBack(boolean fromLeft) {
+        backAnim = null;
+        sheetDrag = false;
+        if (sheet != null) {
+            sheetDrag = true;                       // la hoja baja un poco con el dedo
+        } else if (ob != null) {
+            // La presentación tiene sus propias transiciones: se cambia de paso al soltar.
+        } else if (pages.size() > 1) {
+            backAnim = new PredictiveBack(pages.get(pages.size() - 1), pages.get(pages.size() - 2), fromLeft, dp);
+        } else if (tab != 0) {
+            // En otra pestaña, «atrás» lleva a Inicio: la página se aparta y entra Inicio.
+            backAnim = new PredictiveBack(pages.get(0), null, fromLeft, dp);
+        }
+    }
+
+    /** Has soltado: se completa lo que el gesto estaba enseñando. */
+    private void finishBack() {
+        final PredictiveBack anim = backAnim;
+        boolean drag = sheetDrag;
+        backAnim = null;
+        sheetDrag = false;
+        if (anim == null) {
+            // Sin animación preparada (botones de navegación, la hoja o la presentación).
+            if (drag && sheet != null) sheet.dismiss();
+            else if (ob != null) {
+                if (!ob.back()) finish();
+            } else onBackPressed();
+            return;
+        }
+        if (pages.size() > 1) {
+            final ScrollView top = pages.remove(pages.size() - 1);
+            if (top == logPage) logText = null;
+            anim.commit(new PredictiveBack.Done() {
+                @Override
+                public void run() {
+                    stack.removeView(top);
+                }
+            });
+        } else {
+            bar.select(0, true);
+            anim.commit(new PredictiveBack.Done() {
+                @Override
+                public void run() {
+                    showTab(0, true);
+                }
+            });
+            tab = 0;                                // para que syncBack ya sepa que vamos a Inicio
+        }
+        syncBack();
+    }
+
+    // ---------------------------------------------------------------- actualizaciones
+
+    /**
+     * Al abrir la app: si se acaba de actualizar, las novedades de esta versión; si no, y toca
+     * (cada 6 horas como mucho), mira en GitHub si hay una versión nueva. Durante la presentación
+     * de la primera vez, nada: ya hay bastante en pantalla.
+     */
+    private void startupUpdates(boolean first) {
+        // Para probar las pantallas sin publicar nada: am start ... --ez debug_update true
+        // (la última release cuenta como nueva) o --ez debug_whatsnew true.
+        boolean fakeUpdate = getIntent().getBooleanExtra("debug_update", false);
+        boolean fakeNews = getIntent().getBooleanExtra("debug_whatsnew", false);
+        android.content.SharedPreferences p = Updates.prefs(this);
+        int seen = p.getInt("seen_code", 0);
+        p.edit().putInt("seen_code", Version.CODE).apply();
+        if (first) return;
+        if (fakeNews || (seen > 0 && seen < Version.CODE)) {
+            Updates.forVersion(this, Version.NAME, new Updates.Callback() {
+                @Override
+                public void done(Updates.Release r, String error) {
+                    if (r != null && !isFinishing()) showUpdate(r, UpdateSheet.WHATS_NEW);
+                }
+            });
+            return;
+        }
+        if (fakeUpdate) {
+            Updates.pretendNewer = true;
+            p.edit().remove("upd_shown").apply();
+        }
+        if (fakeUpdate || Updates.due(this)) checkUpdates(null);
+    }
+
+    /**
+     * Pregunta a GitHub por la última versión. Si es nueva, pone el aviso en Inicio y abre la hoja
+     * (sola, solo la primera vez que se ve esa versión; a mano, siempre).
+     *
+     * @param status texto de la fila «Buscar actualizaciones» si se pidió a mano; null al abrir la app
+     */
+    private void checkUpdates(final TextView status) {
+        if (status != null) status.setText(I18n.t("Buscando…", "Checking…"));
+        Updates.latest(this, new Updates.Callback() {
+            @Override
+            public void done(Updates.Release r, String error) {
+                if (isFinishing() || isDestroyed()) return;
+                if (r == null) {
+                    if (status != null) {
+                        status.setText(I18n.t("No se pudo conectar con GitHub", "Couldn't reach GitHub"));
+                        toast(I18n.t("Sin conexión: ", "No connection: ") + error);
+                    }
+                    return;
+                }
+                if (r.newer()) {
+                    if (status != null) status.setText(I18n.t("Versión " + r.version + " disponible", "Version " + r.version + " available"));
+                    addUpdateBanner(r);
+                    android.content.SharedPreferences p = Updates.prefs(SettingsActivity.this);
+                    if (status != null || !r.version.equals(p.getString("upd_shown", null))) {
+                        p.edit().putString("upd_shown", r.version).apply();
+                        showUpdate(r, UpdateSheet.UPDATE);
+                    }
+                } else if (status != null) {
+                    status.setText(I18n.t("Estás al día · ", "Up to date · ") + Version.NAME);
+                }
+            }
+        });
+    }
+
+    /** Abre la hoja de nueva versión o de novedades encima de todo. */
+    void showUpdate(Updates.Release r, int mode) {
+        if (sheet != null || ob != null) return;
+        sheet = new UpdateSheet(this, r, mode);
+        sheet.setBottomInset(insetBottom);
+        sheet.setOnClose(new Runnable() {
+            @Override
+            public void run() {
+                sheet = null;
+                syncBack();
+            }
+        });
+        root.addView(sheet, new FrameLayout.LayoutParams(-1, -1));
+        sheet.show();
+        syncBack();
+    }
+
+    /** Aviso arriba de Inicio: «Versión X disponible», con un brillo que lo cruza de vez en cuando. */
+    private View updateBannerView(final Updates.Release r) {
+        LinearLayout c = card();
+        c.setTag(null);
+        GradientDrawable g = round(Controls.blend(card, accentStrong, 0.28f), px(24));
+        g.setStroke(Math.max(1, px(0.8f)), (accent & 0x00FFFFFF) | 0x55000000);
+        c.setBackground(g);
+        c.setForeground(new UpdateSheet.Shimmer(px(24)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = px(16);
+        c.setLayoutParams(lp);
+        c.addView(navRow(Icons.DOWNLOAD, I18n.t("Versión " + r.version + " disponible", "Version " + r.version + " available"),
+                I18n.t("Toca para ver qué hay de nuevo", "Tap to see what's new"), true, new Runnable() {
+                    @Override
+                    public void run() {
+                        showUpdate(r, UpdateSheet.UPDATE);
+                    }
+                }));
+        return c;
+    }
+
+    private void addUpdateBanner(Updates.Release r) {
+        if (tab != 0 || homeCol == null || updateBanner != null) return;
+        updateBanner = updateBannerView(r);
+        // Debajo del título y la explicación de Inicio.
+        homeCol.addView(updateBanner, 0);
+        Motion.reveal(updateBanner, 0, px(16));
+    }
+
+    // ---------------------------------------------------------------- presentación
+
+    /** Pone la presentación encima de todo y esconde la app (no se dibuja por debajo). */
+    void showOnboarding() {
+        if (ob != null) return;
+        ob = new Onboarding(this);
+        root.addView(ob, new FrameLayout.LayoutParams(-1, -1));
+        stack.setVisibility(View.INVISIBLE);
+        bar.setVisibility(View.INVISIBLE);
+        ob.start();
+        syncBack();
+        root.requestApplyInsets();
+    }
+
+    /**
+     * Cierra la presentación: se aleja y se desvanece mientras la app aparece detrás acercándose,
+     * y la barra sube con un muelle. Con {@code restart}, reinicia el launcher y la interfaz.
+     */
+    void closeOnboarding(final boolean restart) {
+        if (ob == null) return;
+        getSharedPreferences("app", 0).edit().putBoolean("onboarded", true).apply();
+        final Onboarding o = ob;
+        ob = null;
+        o.setEnabled(false);
         showTab(0, false);
         bar.select(0, false);
+        stack.setVisibility(View.VISIBLE);
+        bar.setVisibility(View.VISIBLE);
+        stack.setAlpha(0f);
+        stack.setScaleX(0.92f);
+        stack.setScaleY(0.92f);
+        stack.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(90).setDuration(800)
+                .setInterpolator(Motion.EXPO_OUT).start();
+        if (pages.size() > 0) Motion.cascade((ViewGroup) pages.get(0).getChildAt(0), 160, px(24));
+        bar.setTranslationY(px(140));
+        ValueAnimator up = ValueAnimator.ofFloat(px(140), 0f);
+        Spring.apply(up, px(140), 0f, 0f, 0.6f, 0.72f);
+        up.setStartDelay(260);
+        up.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                bar.setTranslationY((Float) a.getAnimatedValue());
+            }
+        });
+        up.start();
+        o.animate().alpha(0f).scaleX(1.08f).scaleY(1.08f).setDuration(460).setInterpolator(Motion.EASE)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        root.removeView(o);
+                    }
+                }).start();
+        if (restart) {
+            // Un poco después, para que se vea la animación antes de que parpadee la pantalla.
+            root.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    restart(false);
+                    restart(true);
+                }
+            }, 900);
+        }
     }
 
     @Override
@@ -151,6 +469,14 @@ public class SettingsActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (sheet != null) {
+            sheet.dismiss();
+            return;
+        }
+        if (ob != null) {
+            if (!ob.back()) super.onBackPressed();
+            return;
+        }
         if (pages.size() > 1) pop();
         else if (tab != 0) {
             bar.select(0, true);
@@ -159,34 +485,28 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------------------------------------------------------------- colores
+    /**
+     * Tema fijo de HyperSpring: oscuro, con el coral del icono como color principal y tonos suaves
+     * de su familia (rosa, malva, salmón) para los fondos. No depende del fondo de pantalla (Monet):
+     * la app se ve igual en todos los móviles, como una marca.
+     */
     private void palette() {
-        if (Build.VERSION.SDK_INT >= 31) {
-            int n1900 = getColor(android.R.color.system_neutral1_900);
-            int n1800 = getColor(android.R.color.system_neutral1_800);
-            bg = mix(n1900, Color.BLACK, 0.35f);                    // negro suave, con el tono del sistema
-            card = mix(n1900, n1800, 0.62f);
-            pressed = (getColor(android.R.color.system_neutral1_700) & 0x00FFFFFF) | 0x66000000;
-            text = getColor(android.R.color.system_neutral1_50);
-            text2 = getColor(android.R.color.system_neutral2_300);
-            text3 = getColor(android.R.color.system_neutral2_500);
-            accent = getColor(android.R.color.system_accent1_200);
-            onAccent = getColor(android.R.color.system_accent1_800);
-            accentSoft = (getColor(android.R.color.system_accent1_200) & 0x00FFFFFF) | 0x24000000;
-            track = getColor(android.R.color.system_neutral2_700);
-            warn = mix(getColor(android.R.color.system_accent3_900), n1900, 0.25f);
-        } else {
-            bg = 0xFF111114;
-            card = 0xFF202127;
-            pressed = 0x66373841;
-            text = 0xFFE9E9EE;
-            text2 = 0xFFA6A8B3;
-            text3 = 0xFF767884;
-            accent = 0xFFCDBDFF;
-            onAccent = 0xFF34215F;
-            accentSoft = 0x24CDBDFF;
-            track = 0xFF45464F;
-            warn = 0xFF33242C;
-        }
+        bg = 0xFF0E0F13;                        // casi negro, con un punto frío
+        card = 0xFF1C1D23;
+        pressed = 0x66363842;
+        text = 0xFFF2F2F5;
+        text2 = 0xFFA9ABB6;
+        text3 = 0xFF767884;
+        accent = 0xFFFF9C8C;                    // coral claro: textos, iconos y cabeceras
+        onAccent = 0xFF4A1A12;
+        accentSoft = 0x24FF9C8C;
+        track = 0xFF3A3B44;
+        warn = 0xFF33242A;
+        accentStrong = 0xFFEF6A57;              // coral del icono, algo más suave: interruptores, botones
+        // Manchas de los fondos: coral, rosa, malva y salmón claro. Suaves, de la misma familia.
+        vivid = new int[]{0xFFFF8070, 0xFFE8668E, 0xFFB474E0, 0xFFFF9E86};
+        // Tarjetas un poco translúcidas: se adivina el fondo que pasa por detrás.
+        card = (card & 0x00FFFFFF) | 0xD9000000;
     }
 
     private static int mix(int a, int b, float t) {
@@ -219,12 +539,10 @@ public class SettingsActivity extends Activity {
         }
         pages.add(p);
         stack.addView(p);
-        if (animate) {
-            p.setAlpha(0f);
-            p.setTranslationY(px(14));
-            p.animate().alpha(1f).translationY(0f).setDuration(280).setInterpolator(EASE).setUpdateListener(barTick()).start();
-        }
+        // Entrada escalonada: título, explicación y cada tarjeta (y sus filas) una detrás de otra.
+        if (animate) Motion.cascade((ViewGroup) p.getChildAt(0), 0, px(22));
         for (ScrollView o : old) stack.removeView(o);
+        syncBack();
     }
 
     private void push(ScrollView p) {
@@ -232,14 +550,18 @@ public class SettingsActivity extends Activity {
         pages.add(p);
         stack.addView(p);
         p.setTranslationX(stack.getWidth());
-        p.animate().translationX(0f).setDuration(340).setInterpolator(EASE).setUpdateListener(barTick()).start();
-        under.animate().translationX(-stack.getWidth() * 0.25f).alpha(0f).setDuration(340).setInterpolator(EASE).start();
+        p.animate().translationX(0f).setDuration(380).setInterpolator(Motion.EXPO_OUT).setUpdateListener(barTick()).start();
+        Motion.cascade((ViewGroup) p.getChildAt(0), 110, px(18));
+        // La de debajo se aleja un poco (profundidad), además de irse a un lado.
+        under.animate().translationX(-stack.getWidth() * 0.25f).alpha(0f).scaleX(0.94f).scaleY(0.94f)
+                .setDuration(380).setInterpolator(EASE).start();
+        syncBack();
     }
 
     private void pop() {
         final ScrollView top = pages.remove(pages.size() - 1);
         ScrollView under = pages.get(pages.size() - 1);
-        under.animate().translationX(0f).alpha(1f).setDuration(320).setInterpolator(EASE).setUpdateListener(barTick()).start();
+        under.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(EASE).setUpdateListener(barTick()).start();
         top.animate().translationX(stack.getWidth()).setDuration(320).setInterpolator(EASE).withEndAction(new Runnable() {
             @Override
             public void run() {
@@ -247,6 +569,7 @@ public class SettingsActivity extends Activity {
             }
         }).start();
         if (top == logPage) logText = null;
+        syncBack();
     }
 
     private ValueAnimator.AnimatorUpdateListener barTick() {
@@ -281,11 +604,13 @@ public class SettingsActivity extends Activity {
         }
         if (back || title != null) list.addView(top);
 
+        TextView bigTitle = null;
         if (title != null) {
-            TextView t = text(title, 34, text);
-            t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            t.setPadding(px(8), px(10), px(8), 0);
-            list.addView(t);
+            bigTitle = text(title, 34, text);
+            bigTitle.setTypeface(Typeface.create(Typeface.DEFAULT, 600, false));
+            bigTitle.setLetterSpacing(-0.01f);
+            bigTitle.setPadding(px(8), px(10), px(8), 0);
+            list.addView(bigTitle);
         }
         if (subtitle != null) {
             TextView s = text(subtitle, 15, text2);
@@ -299,12 +624,22 @@ public class SettingsActivity extends Activity {
         sv.setClipToPadding(false);
         sv.setVerticalScrollBarEnabled(false);
         sv.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        new LiveBackground(bg, getResources().getDisplayMetrics().density, glowNext).attachTo(sv);
+        // «Acerca de»: manchas de color intensas por toda la pantalla. El resto: curvas de nivel
+        // finas que fluyen sin fin, con movimiento pero sin quitar protagonismo a las tarjetas.
+        (glowNext ? new LiveBackground(bg, vivid, 0.48f, true)
+                : LiveBackground.lines(bg, vivid[0], vivid[1], 0.26f, dp)).attachTo(sv);
         glowNext = false;
         sv.addView(list);
+        final TextView parallax = bigTitle;
+        final float fade = px(110);
         sv.setOnScrollChangeListener(new View.OnScrollChangeListener() {
             @Override
             public void onScrollChange(View v, int x, int y, int ox, int oy) {
+                // El título grande va más despacio que el contenido y se apaga al subir (paralaje).
+                if (parallax != null) {
+                    parallax.setTranslationY(y * 0.42f);
+                    parallax.setAlpha(Math.max(0f, 1f - y / fade));
+                }
                 bar.invalidate();
             }
         });
@@ -326,6 +661,14 @@ public class SettingsActivity extends Activity {
     // ---------------------------------------------------------------- pestañas
     private ScrollView homeTab() {
         LinearLayout c = column();
+        homeCol = c;
+        updateBanner = null;
+        // Si la última búsqueda encontró una versión nueva, el aviso sigue ahí aunque no haya red.
+        Updates.Release cached = Updates.cached(this);
+        if (cached != null && cached.newer()) {
+            updateBanner = updateBannerView(cached);
+            c.addView(updateBanner);
+        }
         StringBuilder old = new StringBuilder();
         if (installed(MainHook.OLD_TELON)) old.append("Telón");
         if (installed(MainHook.OLD_KASHIPLUS)) old.append(old.length() > 0 ? I18n.t(" y KashiPlus", " and KashiPlus") : "KashiPlus");
@@ -381,18 +724,11 @@ public class SettingsActivity extends Activity {
         }
 
         c.addView(label(I18n.t("Funciones", "Features")));
-        LinearLayout f = card();
-        f.addView(toggleRow(Icons.SPARKLE, item(Tune.ITEMS, "icehome_genie_on"), I18n.t("Abrir y cerrar apps", "Opening and closing apps")));
-        f.addView(toggleRow(Icons.LAYERS, item(Tune.ITEMS, "icehome_curtain_on"), I18n.t("Recientes que se doblan al deslizarlas", "Recents that bend as you swipe")));
-        f.addView(toggleRow(Icons.WIDGETS, item(Tune.ITEMS, "icehome_stack_on"), I18n.t("Pila de widgets con baraja", "Shuffling widget stack")));
-        f.addView(toggleRow(Icons.FOLDER, item(Tune.ITEMS, "icehome_folder_morph_on"), I18n.t("Carpetas con muelle", "Springy folders")));
-        f.addView(toggleRow(Icons.DROP, item(Tune.ITEMS, "icehome_folder_glass_on"), I18n.t("Cristal en las carpetas", "Glass folders")));
-        f.addView(toggleRow(Icons.CURTAIN, item(com.icehome.up.telon.Tune.ITEMS, "telon_on"), I18n.t("Telón al cambiar de pantalla", "Curtain when switching screens")));
-        f.addView(toggleRow(Icons.SLIDERS, item(com.icehome.up.cc.Tune.ITEMS, "kashiplus_cc_on"), I18n.t("Cristal en el centro de control", "Glass control center")));
-        c.addView(f);
+        c.addView(featuresCard());
 
         c.addView(label(I18n.t("Perfiles", "Presets")));
         LinearLayout pr = card();
+        pr.setTag(Motion.CASCADE);
         for (final Object[] preset : Presets.ALL) {
             pr.addView(navRow(Icons.SLIDERS, Presets.name(preset), Presets.about(preset), false, new Runnable() {
                 @Override
@@ -405,6 +741,7 @@ public class SettingsActivity extends Activity {
 
         c.addView(label(I18n.t("Acciones", "Actions")));
         LinearLayout a = card();
+        a.setTag(Motion.CASCADE);
         a.addView(navRow(Icons.RESTART, I18n.t("Reiniciar launcher", "Restart launcher"),
                 I18n.t("Aplica los cambios de funciones del escritorio", "Applies launcher feature changes"), false, new Runnable() {
             @Override
@@ -437,6 +774,20 @@ public class SettingsActivity extends Activity {
         }
         return page("HyperSpring", I18n.t("Animaciones y cristal líquido para HyperOS. Toca una función para ver qué hace.",
                 "Animations and liquid glass for HyperOS. Tap a feature to see what it does."), false, c);
+    }
+
+    /** Tarjeta con los interruptores de cada función (Inicio y la presentación). */
+    LinearLayout featuresCard() {
+        LinearLayout f = card();
+        f.setTag(Motion.CASCADE);
+        f.addView(toggleRow(Icons.SPARKLE, item(Tune.ITEMS, "icehome_genie_on"), I18n.t("Abrir y cerrar apps", "Opening and closing apps")));
+        f.addView(toggleRow(Icons.LAYERS, item(Tune.ITEMS, "icehome_curtain_on"), I18n.t("Recientes que se doblan al deslizarlas", "Recents that bend as you swipe")));
+        f.addView(toggleRow(Icons.WIDGETS, item(Tune.ITEMS, "icehome_stack_on"), I18n.t("Pila de widgets con baraja", "Shuffling widget stack")));
+        f.addView(toggleRow(Icons.FOLDER, item(Tune.ITEMS, "icehome_folder_morph_on"), I18n.t("Carpetas con muelle", "Springy folders")));
+        f.addView(toggleRow(Icons.DROP, item(Tune.ITEMS, "icehome_folder_glass_on"), I18n.t("Cristal en las carpetas", "Glass folders")));
+        f.addView(toggleRow(Icons.CURTAIN, item(com.icehome.up.telon.Tune.ITEMS, "telon_on"), I18n.t("Telón al cambiar de pantalla", "Curtain when switching screens")));
+        f.addView(toggleRow(Icons.SLIDERS, item(com.icehome.up.cc.Tune.ITEMS, "kashiplus_cc_on"), I18n.t("Cristal en el centro de control", "Glass control center")));
+        return f;
     }
 
     private ScrollView desktopTab() {
@@ -552,6 +903,28 @@ public class SettingsActivity extends Activity {
                 recreate();
             }
         }));
+        r.addView(navRow(Icons.SPARKLE, I18n.t("Ver la presentación", "Replay the tour"),
+                I18n.t("La bienvenida animada y la configuración guiada", "The animated welcome and the guided setup"), false, new Runnable() {
+            @Override
+            public void run() {
+                showOnboarding();
+            }
+        }));
+        final View check = navRow(Icons.DOWNLOAD, I18n.t("Buscar actualizaciones", "Check for updates"),
+                I18n.t("Tienes la " + Version.NAME, "You have " + Version.NAME), false, null);
+        // El subtítulo de la fila hace de estado: «Buscando…», «Estás al día»…
+        final TextView checkStatus = (TextView) ((LinearLayout) ((LinearLayout) check).getChildAt(1)).getChildAt(1);
+        check.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                checkUpdates(checkStatus);
+            }
+        });
+        r.addView(check);
+        r.addView(prefToggleRow(Icons.RESTART, I18n.t("Buscar al abrir la app", "Check when opening the app"),
+                I18n.t("Como mucho cada 6 horas. Solo pregunta a GitHub por la última versión.",
+                        "At most every 6 hours. It only asks GitHub for the latest version."), "upd_auto", true));
         r.addView(navRow(Icons.LIST, I18n.t("Exportar ajustes", "Export settings"),
                 I18n.t("Guarda todos los ajustes en un archivo. Adjúntalo si reportas un error.",
                         "Saves every setting to a file. Attach it when you report a bug."), false, new Runnable() {
@@ -588,13 +961,15 @@ public class SettingsActivity extends Activity {
         LinearLayout col = column();
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         col.setPadding(0, px(72), 0, px(36));
-        // Fondo coral algo transparente: los brillos que pasan por detrás lo tiñen.
-        ImageView logo = new ImageView(this);
-        logo.setImageDrawable(new LogoDrawable(LiveBackground.CORAL, 0xA8));
+        // Logo opaco: el fondo de colores pasa por detrás pero no lo tiñe.
+        final ImageView logo = new ImageView(this);
+        logo.setImageDrawable(new LogoDrawable(LiveBackground.CORAL, 0xFF));
         col.addView(logo, new LinearLayout.LayoutParams(px(96), px(96)));
+        floatAndSpin(logo);
 
         final TextView name = text("HyperSpring", 36, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setTypeface(Typeface.create(Typeface.DEFAULT, 600, false));
+        name.setLetterSpacing(-0.01f);
         name.setGravity(Gravity.CENTER);
         name.setPadding(0, px(22), 0, 0);
         col.addView(name, new LinearLayout.LayoutParams(-1, -2));
@@ -609,6 +984,46 @@ public class SettingsActivity extends Activity {
         col.addView(sub, new LinearLayout.LayoutParams(-1, -2));
 
         return col;
+    }
+
+    /**
+     * El logo de «Acerca de» flota despacio arriba y abajo; al tocarlo da una vuelta con un muelle.
+     * El vaivén solo corre mientras la página está en pantalla.
+     */
+    private void floatAndSpin(final View logo) {
+        final android.animation.ObjectAnimator fl = android.animation.ObjectAnimator.ofFloat(logo, View.TRANSLATION_Y, -px(5), px(5));
+        fl.setDuration(2600);
+        fl.setRepeatMode(ValueAnimator.REVERSE);
+        fl.setRepeatCount(ValueAnimator.INFINITE);
+        fl.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        logo.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                fl.start();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                fl.cancel();
+            }
+        });
+        sink(logo);
+        logo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+                float from = v.getRotation() % 360f;
+                ValueAnimator spin = ValueAnimator.ofFloat(from, 360f);
+                Spring.apply(spin, from, 360f, 0f, 0.7f, 0.6f);
+                spin.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                    @Override
+                    public void onAnimationUpdate(ValueAnimator a) {
+                        logo.setRotation((Float) a.getAnimatedValue());
+                    }
+                });
+                spin.start();
+            }
+        });
     }
 
     /** Tarjeta de cristal para «Acerca de»: deja ver el fondo vivo. */
@@ -815,11 +1230,18 @@ public class SettingsActivity extends Activity {
         return r;
     }
 
+    /**
+     * Icono de una fila: en coral sobre una baldosa coral muy suave. Todas iguales, como en los
+     * ajustes de HyperOS con un tema: la lista se ve ordenada y del mismo color que la app.
+     * El color que se pasa se ignora.
+     */
     private ImageView icon(int kind, int color) {
         ImageView iv = new ImageView(this);
-        iv.setImageDrawable(new Icons(kind, color));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(26), px(26));
-        lp.rightMargin = px(16);
+        iv.setImageDrawable(new Icons(kind, accent));
+        iv.setPadding(px(7), px(7), px(7), px(7));
+        iv.setBackground(round((accentStrong & 0x00FFFFFF) | 0x2E000000, px(11)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(36), px(36));
+        lp.rightMargin = px(14);
         iv.setLayoutParams(lp);
         return iv;
     }
@@ -848,11 +1270,39 @@ public class SettingsActivity extends Activity {
             ch.setImageDrawable(new Icons(Icons.CHEVRON, text3));
             r.addView(ch, new LinearLayout.LayoutParams(px(20), px(20)));
         }
+        if (action != null) {
+            r.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    action.run();
+                }
+            });
+        }
+        sink(r);
+        return r;
+    }
+
+    /** Interruptor de una preferencia de la propia app (no de las animaciones). */
+    private View prefToggleRow(int iconKind, String title, String sub, final String key, boolean def) {
+        LinearLayout r = rowBase();
+        r.addView(icon(iconKind, text));
+        r.addView(titles(title, sub));
+        final Controls.Toggle t = new Controls.Toggle(this, accentStrong, track);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = px(12);
+        r.addView(t, lp);
+        t.setChecked(getSharedPreferences("app", 0).getBoolean(key, def), false);
+        t.setOnChange(new Controls.Toggle.OnChange() {
+            @Override
+            public void onChange(boolean on) {
+                getSharedPreferences("app", 0).edit().putBoolean(key, on).apply();
+            }
+        });
         r.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                action.run();
+                t.toggle(true);
             }
         });
         sink(r);
@@ -874,7 +1324,7 @@ public class SettingsActivity extends Activity {
         final TextView d = desc(it);
         if (d != null) tc.addView(d);
         r.addView(tc);
-        final Controls.Toggle t = new Controls.Toggle(this, accent, track, onAccent, text2);
+        final Controls.Toggle t = new Controls.Toggle(this, accentStrong, track);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.leftMargin = px(12);
         r.addView(t, lp);
@@ -934,11 +1384,11 @@ public class SettingsActivity extends Activity {
         vlp.leftMargin = px(12);
         head.addView(value, vlp);
         r.addView(head);
-        final Controls.Slider sl = new Controls.Slider(this, track, accent, text);
+        final Controls.Slider sl = new Controls.Slider(this, track, accentStrong);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = px(6);
-        slp.leftMargin = -px(12);
-        slp.rightMargin = -px(10);
+        slp.leftMargin = -px(22);
+        slp.rightMargin = -px(20);
         r.addView(sl, slp);
         final Runnable refresh = new Runnable() {
             @Override
@@ -1037,10 +1487,13 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------------------------------------------------------------- piezas
+    /** Encabezado de grupo: pequeño y gris, como en los ajustes del sistema. */
     private TextView label(String s) {
-        TextView h = text(s, 15, accent);
+        // Cabecera de grupo en el color del sistema: da color a la lista sin cargarla.
+        TextView h = text(s, 13.5f, accent);
         h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        h.setPadding(px(10), px(26), px(10), px(10));
+        h.setLetterSpacing(0.02f);
+        h.setPadding(px(12), px(26), px(12), px(9));
         return h;
     }
 
@@ -1056,6 +1509,7 @@ public class SettingsActivity extends Activity {
         c.setClipToOutline(true);
         c.setPadding(0, px(4), 0, px(4));
         c.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        c.setTag(Motion.CASCADE);                    // al entrar la página, sus filas aparecen una a una
         return c;
     }
 
@@ -1143,7 +1597,7 @@ public class SettingsActivity extends Activity {
     }
 
     /** Tras cambiar muchos ajustes de golpe: avisa a los procesos enganchados y repinta la app. */
-    private void settingsReplaced() {
+    void settingsReplaced() {
         if (Migrate.needed(this)) Migrate.skip(this);       // ya no hay que importar los antiguos
         send(Remote.TUNE);
         for (Runnable rf : refreshers) rf.run();
@@ -1248,7 +1702,7 @@ public class SettingsActivity extends Activity {
      * HyperOS congela el launcher mientras no se ve, así que la orden puede no llegar hasta volver
      * al escritorio.
      */
-    private void restart(final boolean systemUi) {
+    void restart(final boolean systemUi) {
         final String name = systemUi ? I18n.t("la interfaz del sistema", "System UI") : I18n.t("el launcher", "the launcher");
         toast(I18n.t("Reiniciando ", "Restarting ") + name + "…");
         new Thread(new Runnable() {
@@ -1296,6 +1750,7 @@ public class SettingsActivity extends Activity {
 
     /** Aviso corto tras cambiar una función que necesita reiniciar su proceso. */
     private void pendingRestart(boolean systemUi) {
+        if (ob != null) return;                 // en la presentación, el reinicio se ofrece al final
         if (restartToast != null) restartToast.cancel();
         restartToast = android.widget.Toast.makeText(this, systemUi
                 ? I18n.t("Se aplica al reiniciar la interfaz (Inicio → Reiniciar interfaz del sistema)", "Applies after restarting System UI (Home → Restart System UI)")
@@ -1305,7 +1760,7 @@ public class SettingsActivity extends Activity {
     }
 
     /** Hundimiento al pulsar: la vista se encoge un poco y vuelve con un pequeño rebote. */
-    private void sink(View v) {
+    void sink(View v) {
         v.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent e) {
@@ -1327,7 +1782,7 @@ public class SettingsActivity extends Activity {
     }
 
     /** Lo que publican el launcher y la interfaz del sistema (ver {@link PrefsProvider#STATE}). */
-    private String state(String key) {
+    String state(String key) {
         try {
             return getSharedPreferences("state", 0).getString(key, null);
         } catch (Throwable t) {
@@ -1335,7 +1790,7 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    private static long bootTime() {
+    static long bootTime() {
         return System.currentTimeMillis() - SystemClock.elapsedRealtime();
     }
 
@@ -1385,7 +1840,7 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    private boolean installed(String pkg) {
+    boolean installed(String pkg) {
         try {
             getPackageManager().getPackageInfo(pkg, 0);
             return true;

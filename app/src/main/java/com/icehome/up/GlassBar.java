@@ -40,8 +40,11 @@ final class GlassBar extends View {
         void onSelect(int index);
     }
 
-    /** Refracción del borde (y aumento, para la burbuja) de una cápsula centrada en {@code center}. */
-    private static final String LENS =
+    /**
+     * Refracción del borde (y aumento, para la burbuja) de una cápsula centrada en {@code center}.
+     * También la usan las bolas de cristal de {@link Controls}.
+     */
+    static final String LENS =
             "uniform shader content;\n"
             + "uniform float2 center;\n"
             + "uniform float2 halfSize;\n"
@@ -316,7 +319,7 @@ final class GlassBar extends View {
             bubbleLens.setFloatUniform("refractionHeight", Math.min(br, 14f * dp));
             bubbleLens.setFloatUniform("refractionAmount", -16f * dp * grow);
             bubbleLens.setFloatUniform("magnify", 1f + 0.22f * grow);
-            bubbleLens.setFloatUniform("chroma", 0.25f);
+            bubbleLens.setFloatUniform("chroma", 0f);         // sin arcoíris dentro de la app
             lensNode.setPosition(0, 0, w, h);
             RecordingCanvas rc = lensNode.beginRecording(w, h);
             rc.drawRenderNode(content);
@@ -357,7 +360,7 @@ final class GlassBar extends View {
                 barLens.setFloatUniform("refractionHeight", Math.min(r, 28f * dp));
                 barLens.setFloatUniform("refractionAmount", -20f * dp);
                 barLens.setFloatUniform("magnify", 1f);
-                barLens.setFloatUniform("chroma", 0.35f);
+                barLens.setFloatUniform("chroma", 0f);
                 effect = RenderEffect.createChainEffect(RenderEffect.createRuntimeShaderEffect(barLens, "content"), effect);
             }
             backdrop.setRenderEffect(effect);

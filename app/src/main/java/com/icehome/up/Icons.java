@@ -17,7 +17,7 @@ final class Icons extends Drawable {
 
     static final int HOME = 0, GRID = 1, PHONE = 2, INFO = 3, SPARKLE = 4, LAYERS = 5, FOLDER = 6, DROP = 7,
             TOGGLES = 8, CURTAIN = 9, SLIDERS = 10, LIST = 11, RESTART = 12, CHEVRON = 13, BACK = 14, WIDGETS = 15,
-            LIGHT = 16, PALETTE = 17, CODE = 18, SHIELD = 19;
+            LIGHT = 16, PALETTE = 17, CODE = 18, SHIELD = 19, DOWNLOAD = 20;
 
     private final int kind;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -199,6 +199,20 @@ final class Icons extends Drawable {
                 path.quadTo(5, 17.5f, 5, 11.5f);
                 path.lineTo(5, 6.5f);
                 path.close();
+                break;
+            case DOWNLOAD:
+                // flecha hacia abajo que cae en una bandeja
+                path.moveTo(12, 4);
+                path.lineTo(12, 14.5f);
+                path.moveTo(7.5f, 10.5f);
+                path.lineTo(12, 15);
+                path.lineTo(16.5f, 10.5f);
+                path.moveTo(4.5f, 15.5f);
+                path.lineTo(4.5f, 18.5f);
+                path.quadTo(4.5f, 20, 6, 20);
+                path.lineTo(18, 20);
+                path.quadTo(19.5f, 20, 19.5f, 18.5f);
+                path.lineTo(19.5f, 15.5f);
                 break;
             default:
                 break;

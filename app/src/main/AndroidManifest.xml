@@ -5,6 +5,10 @@
         android:name="com.icehome.up.permission.CONTROL"
         android:protectionLevel="signature" />
     <uses-permission android:name="com.icehome.up.permission.CONTROL" />
+    <!-- Buscar y descargar actualizaciones desde GitHub (solo api.github.com y sus descargas). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Pasar la actualización descargada al instalador del sistema (que pide confirmación). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Módulos antiguos (para avisar) y apps que se modifican (para la tarjeta de compatibilidad). -->
     <queries>
         <package android:name="com.telon.fx" />
@@ -28,7 +32,10 @@
 
         <activity
             android:name="com.icehome.up.SettingsActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="true">
+            <!-- enableOnBackInvokedCallback: activa el «atrás predictivo». El gesto avisa a la app
+                 de cada movimiento del dedo y la página lo sigue (PredictiveBack.java). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
