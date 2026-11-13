@@ -212,6 +212,78 @@ final class GlRenderer {
     private static EGLContext context = EGL14.EGL_NO_CONTEXT;
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
+    /** Hidden 1×1 surface used to release textures when no output layer exists. */
+    private static EGLSurface maintenance = EGL14.EGL_NO_SURFACE;
+    private static boolean displayInitialized;
+    private static volatile long contextGeneration = 1L;
+    private static volatile Thread glThread;
+
+    private static void assertGlThread() {
+        Thread current = Thread.currentThread();
+        if (glThread == null) glThread = current;
+        else if (glThread != current) {
+            throw new IllegalStateException("GlRenderer EGL context accessed from a non-render thread");
+        }
+    }
+
+    private static final class EglFailure extends RuntimeException {
+        final int error;
+
+        EglFailure(String operation, int error) {
+            super(operation + " failed: EGL error 0x" + Integer.toHexString(error));
+            this.error = error;
+        }
+    }
+
+    private static final class GlContextLost extends RuntimeException {
+        GlContextLost(String operation) { super(operation + ": GL context lost"); }
+    }
+
+    private static void checkEgl(boolean success, String operation) {
+        if (!success) throw new EglFailure(operation, EGL14.eglGetError());
+    }
+
+    private static void setNonBlockingSwapInterval() {
+        if (!EGL14.eglSwapInterval(display, 0)) {
+            int error = EGL14.eglGetError();
+            if (isEglContextLostError(error)) throw new EglFailure("eglSwapInterval", error);
+            // Some drivers require their default interval; this is a pacing hint, not a requirement.
+        }
+    }
+
+    private static void checkGlError(String operation) {
+        int firstError = GLES20.GL_NO_ERROR;
+        for (int i = 0; i < 8; i++) {
+            int error = GLES20.glGetError();
+            if (error == GLES20.GL_NO_ERROR) break;
+            if (error == 0x0507) throw new GlContextLost(operation);
+            if (firstError == GLES20.GL_NO_ERROR) firstError = error;
+        }
+        if (firstError != GLES20.GL_NO_ERROR) {
+            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(firstError));
+        }
+    }
+
+    private static boolean isEglContextLostError(int error) {
+        return error == 0x300E  // EGL_CONTEXT_LOST
+                || error == 0x3006  // EGL_BAD_CONTEXT
+                || error == 0x3001  // EGL_NOT_INITIALIZED
+                || error == 0x3008; // EGL_BAD_DISPLAY
+    }
+
+    private static boolean isContextLost(Throwable error) {
+        return error instanceof GlContextLost
+                || (error instanceof EglFailure && isEglContextLostError(((EglFailure) error).error));
+    }
+
+    /** Surface failures can be retried with the current context; context loss cannot. */
+    private static void recover(Throwable error) {
+        if (isContextLost(error)) {
+            destroyEglContext();
+        } else if (releaseLayer()) {
+            destroyEglContext();
+        }
+    }
     /** [ventana, pantalla de inicio] */
     private static final Program[] programs = new Program[2];
     /**
@@ -221,7 +293,9 @@ final class GlRenderer {
      * ({@link #detach}) y el principal pasa a ser uno nuevo.
      */
     static final class Content {
+        final long generation = contextGeneration;
         int windowTexture, iconTexture;
+        private boolean released;
         /** De quién es el icono que hay en la textura (una animación, o la precarga). */
         volatile Object iconOwner;
         /** De quién es la imagen que hay en la textura de la ventana. */
@@ -233,25 +307,45 @@ final class GlRenderer {
         /** Solo hilo de dibujo, con el contexto actual. */
         static Content create() {
             Content c = new Content();
-            int[] tex = new int[2];
-            GLES20.glGenTextures(2, tex, 0);
-            c.windowTexture = tex[0];
-            c.iconTexture = tex[1];
-            setupTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, c.windowTexture);
-            setupTexture(GLES20.GL_TEXTURE_2D, c.iconTexture);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR);
-            c.input = new SurfaceTexture(c.windowTexture);
-            c.inputSurface = new Surface(c.input);
-            return c;
+            try {
+                int[] tex = new int[2];
+                GLES20.glGenTextures(2, tex, 0);
+                c.windowTexture = tex[0];
+                c.iconTexture = tex[1];
+                if (c.windowTexture == 0 || c.iconTexture == 0) {
+                    throw new IllegalStateException("glGenTextures returned texture 0");
+                }
+                setupTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, c.windowTexture);
+                setupTexture(GLES20.GL_TEXTURE_2D, c.iconTexture);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR);
+                c.input = new SurfaceTexture(c.windowTexture);
+                c.inputSurface = new Surface(c.input);
+                checkGlError("create capture content");
+                return c;
+            } catch (Throwable t) {
+                c.release(true);
+                throw t;
+            }
         }
 
-        void release() {
-            try {
-                inputSurface.release();
-                input.release();
-                GLES20.glDeleteTextures(2, new int[]{windowTexture, iconTexture}, 0);
-            } catch (Throwable ignored) {
+        void release(boolean deleteTextures) {
+            if (released) return;
+            released = true;
+            if (inputSurface != null) {
+                try { inputSurface.release(); } catch (Throwable ignored) {}
+                inputSurface = null;
             }
+            if (input != null) {
+                try { input.release(); } catch (Throwable ignored) {}
+                input = null;
+            }
+            if (deleteTextures && (windowTexture != 0 || iconTexture != 0)) {
+                try {
+                    GLES20.glDeleteTextures(2, new int[]{windowTexture, iconTexture}, 0);
+                } catch (Throwable ignored) {
+                }
+            }
+            windowTexture = iconTexture = 0;
         }
     }
 
@@ -285,6 +379,8 @@ final class GlRenderer {
      * está, no hace nada; rehacerla es lento y no debería pasar en mitad de una animación.
      */
     static boolean ensure(SurfaceControl root, int screenW, int screenH) {
+        assertGlThread();
+        if (root == null || !root.isValid() || screenW <= 0 || screenH <= 0) return false;
         float sc0 = Math.max(0.5f, Math.min(1f, wantedScale));
         int w = Math.round(screenW * sc0), h = Math.round(screenH * sc0);
         boolean sameScale = Math.abs(sc0 - scale) < 0.001f;
@@ -297,9 +393,9 @@ final class GlRenderer {
             w = Math.max(w, width);
             h = Math.max(h, height);
         }
-        releaseLayer();
+        if (releaseLayer()) destroyEglContext();
         try {
-            if (!initContext()) return false;
+            initContext();
             SurfaceControl sc = new SurfaceControl.Builder()
                     .setName("IceHome genie")
                     .setBufferSize(w, h)
@@ -307,23 +403,23 @@ final class GlRenderer {
                     .setOpaque(false)
                     .setParent(root)
                     .build();
+            layer = sc;
+            parent = root;
             SurfaceControl.Transaction t = new SurfaceControl.Transaction();
             t.setVisibility(sc, false);
             t.apply();
             output = new Surface(sc);
             window = EGL14.eglCreateWindowSurface(display, config, output, new int[]{EGL14.EGL_NONE}, 0);
-            if (window == EGL14.EGL_NO_SURFACE) throw new IllegalStateException("eglCreateWindowSurface " + EGL14.eglGetError());
+            if (window == EGL14.EGL_NO_SURFACE) throw new EglFailure("eglCreateWindowSurface", EGL14.eglGetError());
             makeCurrent();
-            EGL14.eglSwapInterval(display, 0);              // nunca esperar al refresco
-            layer = sc;
-            parent = root;
+            setNonBlockingSwapInterval();
             scale = sc0;
             width = w;
             height = h;
             return true;
         } catch (Throwable e) {
             Log.e("genio: no se pudo preparar OpenGL", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -346,34 +442,66 @@ final class GlRenderer {
     }
 
     private static boolean initContext() {
-        if (context != EGL14.EGL_NO_CONTEXT) return true;
-        display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
-        int[] version = new int[2];
-        if (!EGL14.eglInitialize(display, version, 0, version, 1)) throw new IllegalStateException("eglInitialize");
-        EGLConfig[] configs = new EGLConfig[1];
-        int[] count = new int[1];
-        int[] attrs = {
-                EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT | EGL14.EGL_PBUFFER_BIT,
-                EGL14.EGL_NONE};
-        if (!EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, count, 0) || count[0] == 0) {
-            throw new IllegalStateException("eglChooseConfig");
+        assertGlThread();
+        if (context != EGL14.EGL_NO_CONTEXT && displayInitialized) return true;
+
+        EGLSurface pbuffer = EGL14.EGL_NO_SURFACE;
+        try {
+            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
+            if (display == EGL14.EGL_NO_DISPLAY) throw new EglFailure("eglGetDisplay", EGL14.eglGetError());
+
+            int[] version = new int[2];
+            checkEgl(EGL14.eglInitialize(display, version, 0, version, 1), "eglInitialize");
+            displayInitialized = true;
+            checkEgl(EGL14.eglBindAPI(EGL14.EGL_OPENGL_ES_API), "eglBindAPI(OpenGL ES)");
+
+            EGLConfig[] configs = new EGLConfig[1];
+            int[] count = new int[1];
+            int[] attrs = {
+                    EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
+                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT | EGL14.EGL_PBUFFER_BIT,
+                    EGL14.EGL_NONE};
+            checkEgl(EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, count, 0), "eglChooseConfig");
+            if (count[0] == 0) throw new IllegalStateException("No EGLConfig supports window+pbuffer GLES2");
+
+            config = configs[0];
+            context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT,
+                    new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE}, 0);
+            if (context == EGL14.EGL_NO_CONTEXT) throw new EglFailure("eglCreateContext", EGL14.eglGetError());
+
+            pbuffer = EGL14.eglCreatePbufferSurface(display, config,
+                    new int[]{EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE}, 0);
+            if (pbuffer == EGL14.EGL_NO_SURFACE) throw new EglFailure("eglCreatePbufferSurface", EGL14.eglGetError());
+            checkEgl(EGL14.eglMakeCurrent(display, pbuffer, pbuffer, context), "eglMakeCurrent(pbuffer)");
+
+            programs[0] = new Program(fragment(true));
+            programs[1] = new Program(fragment(false));
+            synchronized (queueLock) {
+                main = Content.create();
+                queued = false;
+                queuedOwner = null;
+            }
+            checkGlError("initialize genie renderer");
+
+            checkEgl(EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                    EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT), "eglMakeCurrent(unbind pbuffer)");
+            maintenance = pbuffer;
+            pbuffer = EGL14.EGL_NO_SURFACE;
+            return true;
+        } catch (Throwable t) {
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                try {
+                    EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                            EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                } catch (Throwable ignored) {}
+                if (pbuffer != EGL14.EGL_NO_SURFACE) {
+                    try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+                }
+            }
+            destroyEglContext();
+            throw t;
         }
-        config = configs[0];
-        context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT,
-                new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE}, 0);
-        if (context == EGL14.EGL_NO_CONTEXT) throw new IllegalStateException("eglCreateContext");
-        // Un pbuffer mínimo para crear texturas y programas antes de tener la capa.
-        EGLSurface pb = EGL14.eglCreatePbufferSurface(display, config,
-                new int[]{EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE}, 0);
-        EGL14.eglMakeCurrent(display, pb, pb, context);
-        programs[0] = new Program(fragment(true));
-        programs[1] = new Program(fragment(false));
-        main = Content.create();
-        EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-        EGL14.eglDestroySurface(display, pb);
-        return true;
     }
 
     private static void setupTexture(int target, int name) {
@@ -385,9 +513,22 @@ final class GlRenderer {
     }
 
     private static void makeCurrent() {
-        if (!EGL14.eglMakeCurrent(display, window, window, context)) {
-            throw new IllegalStateException("eglMakeCurrent " + EGL14.eglGetError());
+        assertGlThread();
+        if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
+                || window == EGL14.EGL_NO_SURFACE) {
+            throw new IllegalStateException("EGL renderer is not initialized");
         }
+        checkEgl(EGL14.eglMakeCurrent(display, window, window, context), "eglMakeCurrent(window)");
+    }
+
+    private static void makeMaintenanceCurrent() {
+        assertGlThread();
+        if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
+                || maintenance == EGL14.EGL_NO_SURFACE) {
+            throw new IllegalStateException("EGL maintenance surface is unavailable");
+        }
+        checkEgl(EGL14.eglMakeCurrent(display, maintenance, maintenance, context),
+                "eglMakeCurrent(maintenance)");
     }
 
     // ------------------------------------------------------------------ contenido
@@ -396,7 +537,7 @@ final class GlRenderer {
     static boolean queue(HardwareBuffer buffer, ColorSpace colorSpace, Object owner) {
         synchronized (queueLock) {
             Content c = main;
-            if (c == null || queued) return false;
+            if (c == null || c.inputSurface == null || c.generation != contextGeneration || queued) return false;
             if (!Hidden.queueBuffer(c.inputSurface, buffer, colorSpace)) return false;
             queuedOwner = owner;
             queued = true;
@@ -413,16 +554,24 @@ final class GlRenderer {
 
     /** Hilo de dibujo: pasa la última captura a la textura principal. Devuelve de quién era, o null. */
     static Object consume() {
+        assertGlThread();
         synchronized (queueLock) {
-            if (!queued) return null;
+            if (!queued || main == null || main.input == null) {
+                queued = false;
+                queuedOwner = null;
+                return null;
+            }
+            Object owner = queuedOwner;
             queued = false;
+            queuedOwner = null;
             try {
                 main.input.updateTexImage();
                 main.input.getTransformMatrix(main.texMatrix);
-                main.windowOwner = queuedOwner;
-                return queuedOwner;
+                main.windowOwner = owner;
+                return owner;
             } catch (Throwable e) {
                 Log.e("genio: textura de la captura", e);
+                if (isContextLost(e)) recover(e);
                 return null;
             }
         }
@@ -433,25 +582,39 @@ final class GlRenderer {
      * captura de {@code owner}, si había una en espera) y las capturas van a uno nuevo.
      */
     static Content detach(Object owner) {
+        assertGlThread();
         synchronized (queueLock) {
             Content old = main;
             if (old == null || window == EGL14.EGL_NO_SURFACE) return null;
             try {
                 makeCurrent();
             } catch (Throwable e) {
+                recover(e);
                 return null;
             }
             if (queued && queuedOwner == owner) consume();
+            if (context == EGL14.EGL_NO_CONTEXT) return null;
             queued = false;
-            main = Content.create();
-            return old;
+            queuedOwner = null;
+            try {
+                main = Content.create();
+                return old;
+            } catch (Throwable t) {
+                recover(t);
+                return null;
+            }
         }
     }
 
     /** Icono de la app (cuadrado, potencia de 2): el genio sale de él y vuelve a él. */
     static void uploadIcon(Bitmap b, Object owner) {
+        assertGlThread();
         makeCurrent();
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, main.iconTexture);
+        Content c = main;
+        if (c == null || c.generation != contextGeneration || c.iconTexture == 0) {
+            throw new IllegalStateException("No valid genie content texture");
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, c.iconTexture);
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, b, 0);
         GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
         main.iconOwner = owner;
@@ -485,12 +648,19 @@ final class GlRenderer {
 
     /** Hilo de dibujo: libera el contenido de un genio que ya terminó. */
     static void release(Content c) {
+        assertGlThread();
         if (c == null || c == main) return;
-        try {
-            if (window != EGL14.EGL_NO_SURFACE) makeCurrent();
-            c.release();
-        } catch (Throwable ignored) {
+        boolean deleteTextures = false;
+        if (c.generation == contextGeneration && context != EGL14.EGL_NO_CONTEXT) {
+            try {
+                if (window != EGL14.EGL_NO_SURFACE) makeCurrent();
+                else makeMaintenanceCurrent();
+                deleteTextures = true;
+            } catch (Throwable t) {
+                recover(t);
+            }
         }
+        c.release(deleteTextures);
     }
 
     // ------------------------------------------------------------------ dibujo
@@ -503,6 +673,7 @@ final class GlRenderer {
     /** Empieza un fotograma: búfer limpio y transparente. Luego {@link #drawGenie} y {@link #endFrame}. */
     /** @param dim oscurecido del escritorio detrás (negro premultiplicado; 0 = transparente). */
     static boolean beginFrame(float dim) {
+        assertGlThread();
         try {
             makeCurrent();
             GLES20.glViewport(0, 0, width, height);
@@ -514,7 +685,7 @@ final class GlRenderer {
             return true;
         } catch (Throwable e) {
             Log.e("genio: no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -527,8 +698,11 @@ final class GlRenderer {
      * @param bg         color de la app (ARGB)
      */
     static boolean drawGenie(Content c, boolean fromWindow, Geo g, float fullHalf, float fullH, int bg) {
+        assertGlThread();
         try {
+            if (c == null || c.generation != contextGeneration || context == EGL14.EGL_NO_CONTEXT) return false;
             Program p = programs[fromWindow ? 0 : 1];
+            if (p == null) return false;
             GLES20.glUseProgram(p.id);
             if (fromWindow) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
@@ -559,22 +733,25 @@ final class GlRenderer {
             GLES20.glEnableVertexAttribArray(p.pos);
             GLES20.glVertexAttribPointer(p.pos, 2, GLES20.GL_FLOAT, false, 0, mesh);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, (ROWS + 1) * 2);
+            checkGlError("draw genie");
             return true;
         } catch (Throwable e) {
             Log.e("genio: no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
 
     /** Termina el fotograma y lo manda al compositor. */
     static boolean endFrame() {
+        assertGlThread();
         try {
-            if (!EGL14.eglSwapBuffers(display, window)) throw new IllegalStateException("eglSwapBuffers " + EGL14.eglGetError());
+            checkGlError("end genie frame");
+            checkEgl(EGL14.eglSwapBuffers(display, window), "eglSwapBuffers");
             return true;
         } catch (Throwable e) {
             Log.e("genio: no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -585,43 +762,114 @@ final class GlRenderer {
 
     /** Compila los programas y dibuja una vez con cada uno, sin que se vea (la capa está oculta). */
     static void warm(SurfaceControl root, int screenW, int screenH) {
+        assertGlThread();
         long t0 = android.os.SystemClock.uptimeMillis();
         SurfaceControl before = layer;
         if (!ensure(root, screenW, screenH) || (layer == before && warmed)) return;
-        makeCurrent();
-        Bitmap one = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
-        uploadIcon(one, null);
-        one.recycle();
-        Geo g = new Geo();
-        g.cur.set(0, 0, 8, 8);
-        g.icon.set(0, 0, 8, 8);
-        g.pw = g.lead = g.lag = 1f;
-        g.radius = 2f;
-        g.splashIcon = 0.3f;
-        warmed = draw(true, g, 4f, 8f, 0xFFFFFFFF) && draw(false, g, 4f, 8f, 0xFFFFFFFF);
-        Log.i("genio preparado en " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+        Bitmap one = null;
+        try {
+            makeCurrent();
+            one = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
+            uploadIcon(one, null);
+            Geo g = new Geo();
+            g.cur.set(0, 0, 8, 8);
+            g.icon.set(0, 0, 8, 8);
+            g.pw = g.lead = g.lag = 1f;
+            g.radius = 2f;
+            g.splashIcon = 0.3f;
+            warmed = draw(true, g, 4f, 8f, 0xFFFFFFFF) && draw(false, g, 4f, 8f, 0xFFFFFFFF);
+            Log.i("genio preparado en " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+        } catch (Throwable t) {
+            Log.e("genio: precalentamiento OpenGL", t);
+            recover(t);
+            warmed = false;
+        } finally {
+            if (one != null && !one.isRecycled()) one.recycle();
+        }
     }
 
-    private static void releaseLayer() {
-        if (window != EGL14.EGL_NO_SURFACE) {
-            EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-            EGL14.eglDestroySurface(display, window);
-            window = EGL14.EGL_NO_SURFACE;
+    /** Releases only the window surface/layer; shader and texture objects remain reusable. */
+    private static boolean releaseLayer() {
+        assertGlThread();
+        boolean contextLost = false;
+        EGLSurface oldWindow = window;
+        window = EGL14.EGL_NO_SURFACE;
+        if (display != EGL14.EGL_NO_DISPLAY && context != EGL14.EGL_NO_CONTEXT) {
+            try {
+                if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
+                    contextLost = isEglContextLostError(EGL14.eglGetError());
+                }
+            } catch (Throwable ignored) {
+            }
         }
-        if (output != null) output.release();
-        if (layer != null) {
+        if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
+            try {
+                if (!EGL14.eglDestroySurface(display, oldWindow)) {
+                    contextLost |= isEglContextLostError(EGL14.eglGetError());
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        Surface oldOutput = output;
+        output = null;
+        if (oldOutput != null) {
+            try { oldOutput.release(); } catch (Throwable ignored) {}
+        }
+
+        SurfaceControl oldLayer = layer;
+        layer = parent = null;
+        if (oldLayer != null) {
             try {
                 SurfaceControl.Transaction t = new SurfaceControl.Transaction();
-                t.reparent(layer, null);
+                t.reparent(oldLayer, null);
                 t.apply();
             } catch (Throwable ignored) {
             }
-            layer.release();
+            try { oldLayer.release(); } catch (Throwable ignored) {}
         }
-        output = null;
-        layer = parent = null;
         width = height = 0;
         warmed = false;
+        return contextLost;
+    }
+
+    /** Full teardown is mandatory after EGL_CONTEXT_LOST: every GL name is now stale. */
+    private static void destroyEglContext() {
+        assertGlThread();
+        releaseLayer();
+
+        Content oldMain;
+        synchronized (queueLock) {
+            oldMain = main;
+            main = null;
+            queued = false;
+            queuedOwner = null;
+        }
+
+        EGLSurface oldMaintenance = maintenance;
+        maintenance = EGL14.EGL_NO_SURFACE;
+        if (display != EGL14.EGL_NO_DISPLAY && displayInitialized) {
+            try {
+                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+            } catch (Throwable ignored) {
+            }
+            if (oldMaintenance != EGL14.EGL_NO_SURFACE) {
+                try { EGL14.eglDestroySurface(display, oldMaintenance); } catch (Throwable ignored) {}
+            }
+            if (context != EGL14.EGL_NO_CONTEXT) {
+                try { EGL14.eglDestroyContext(display, context); } catch (Throwable ignored) {}
+            }
+            try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
+        }
+
+        context = EGL14.EGL_NO_CONTEXT;
+        display = EGL14.EGL_NO_DISPLAY;
+        config = null;
+        displayInitialized = false;
+        programs[0] = programs[1] = null;
+        contextGeneration++;
+        if (oldMain != null) oldMain.release(false);
     }
 
     /** Un programa con sus uniformes. */
@@ -629,13 +877,27 @@ final class GlRenderer {
         final int id, pos, content, texM, iconTex, splash, fade, bend, flip, cup, buf, cur, icon, g, iconMix, fullHalf, bg, scale, bufH;
 
         Program(String fragment) {
-            id = GLES20.glCreateProgram();
-            GLES20.glAttachShader(id, compile(GLES20.GL_VERTEX_SHADER, VERTEX));
-            GLES20.glAttachShader(id, compile(GLES20.GL_FRAGMENT_SHADER, fragment));
-            GLES20.glLinkProgram(id);
-            int[] ok = new int[1];
-            GLES20.glGetProgramiv(id, GLES20.GL_LINK_STATUS, ok, 0);
-            if (ok[0] == 0) throw new IllegalStateException("link: " + GLES20.glGetProgramInfoLog(id));
+            int vertex = compile(GLES20.GL_VERTEX_SHADER, VERTEX);
+            int pixel = 0;
+            int linked = 0;
+            try {
+                pixel = compile(GLES20.GL_FRAGMENT_SHADER, fragment);
+                linked = GLES20.glCreateProgram();
+                if (linked == 0) throw new IllegalStateException("glCreateProgram returned 0");
+                GLES20.glAttachShader(linked, vertex);
+                GLES20.glAttachShader(linked, pixel);
+                GLES20.glLinkProgram(linked);
+                int[] ok = new int[1];
+                GLES20.glGetProgramiv(linked, GLES20.GL_LINK_STATUS, ok, 0);
+                if (ok[0] == 0) throw new IllegalStateException("link: " + GLES20.glGetProgramInfoLog(linked));
+                id = linked;
+            } catch (Throwable t) {
+                if (linked != 0) GLES20.glDeleteProgram(linked);
+                throw t;
+            } finally {
+                GLES20.glDeleteShader(vertex);
+                if (pixel != 0) GLES20.glDeleteShader(pixel);
+            }
             pos = GLES20.glGetAttribLocation(id, "aRow");
             content = u("content");
             texM = u("texM");
@@ -661,13 +923,18 @@ final class GlRenderer {
         }
 
         private static int compile(int type, String src) {
-            int s = GLES20.glCreateShader(type);
-            GLES20.glShaderSource(s, src);
-            GLES20.glCompileShader(s);
+            int shader = GLES20.glCreateShader(type);
+            if (shader == 0) throw new IllegalStateException("glCreateShader returned 0");
+            GLES20.glShaderSource(shader, src);
+            GLES20.glCompileShader(shader);
             int[] ok = new int[1];
-            GLES20.glGetShaderiv(s, GLES20.GL_COMPILE_STATUS, ok, 0);
-            if (ok[0] == 0) throw new IllegalStateException("shader: " + GLES20.glGetShaderInfoLog(s));
-            return s;
+            GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, ok, 0);
+            if (ok[0] == 0) {
+                String info = GLES20.glGetShaderInfoLog(shader);
+                GLES20.glDeleteShader(shader);
+                throw new IllegalStateException("shader: " + info);
+            }
+            return shader;
         }
     }
 

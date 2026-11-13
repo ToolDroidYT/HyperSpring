@@ -193,6 +193,74 @@ final class TelonRenderer {
     private static EGLContext context = EGL14.EGL_NO_CONTEXT;
     private static EGLConfig config;
     private static EGLSurface window = EGL14.EGL_NO_SURFACE;
+    private static boolean displayInitialized;
+    private static volatile Thread glThread;
+
+    private static void assertGlThread() {
+        Thread current = Thread.currentThread();
+        if (glThread == null) glThread = current;
+        else if (glThread != current) {
+            throw new IllegalStateException("TelonRenderer EGL context accessed from a non-render thread");
+        }
+    }
+
+    private static final class EglFailure extends RuntimeException {
+        final int error;
+
+        EglFailure(String operation, int error) {
+            super(operation + " failed: EGL error 0x" + Integer.toHexString(error));
+            this.error = error;
+        }
+    }
+
+    private static final class GlContextLost extends RuntimeException {
+        GlContextLost(String operation) { super(operation + ": GL context lost"); }
+    }
+
+    private static void checkEgl(boolean success, String operation) {
+        if (!success) throw new EglFailure(operation, EGL14.eglGetError());
+    }
+
+    private static void setNonBlockingSwapInterval() {
+        if (!EGL14.eglSwapInterval(display, 0)) {
+            int error = EGL14.eglGetError();
+            if (isEglContextLostError(error)) throw new EglFailure("eglSwapInterval", error);
+            // Some drivers require their default interval; this is a pacing hint, not a requirement.
+        }
+    }
+
+    private static void checkGlError(String operation) {
+        int firstError = GLES20.GL_NO_ERROR;
+        for (int i = 0; i < 8; i++) {
+            int error = GLES20.glGetError();
+            if (error == GLES20.GL_NO_ERROR) break;
+            if (error == 0x0507) throw new GlContextLost(operation);
+            if (firstError == GLES20.GL_NO_ERROR) firstError = error;
+        }
+        if (firstError != GLES20.GL_NO_ERROR) {
+            throw new IllegalStateException(operation + ": GL error 0x" + Integer.toHexString(firstError));
+        }
+    }
+
+    private static boolean isEglContextLostError(int error) {
+        return error == 0x300E  // EGL_CONTEXT_LOST
+                || error == 0x3006  // EGL_BAD_CONTEXT
+                || error == 0x3001  // EGL_NOT_INITIALIZED
+                || error == 0x3008; // EGL_BAD_DISPLAY
+    }
+
+    private static boolean isContextLost(Throwable error) {
+        return error instanceof GlContextLost
+                || (error instanceof EglFailure && isEglContextLostError(((EglFailure) error).error));
+    }
+
+    private static void recover(Throwable error) {
+        if (isContextLost(error)) {
+            destroyEglContext();
+        } else if (releaseLayer()) {
+            destroyEglContext();
+        }
+    }
     private static int program, aRow, uM, uWin, uBend, uPower, uMargin, uScale, uBuf, uTexM, uRadius, uAlpha, uAa, uContent, uBlur;
     /** Una entrada de capturas: textura externa alimentada sin copias por una SurfaceTexture. */
     private static final class Input {
@@ -203,6 +271,21 @@ final class TelonRenderer {
         boolean queued;
         Object owner;
         int w, h;
+
+        void release() {
+            if (surface != null) {
+                try { surface.release(); } catch (Throwable ignored) {}
+                surface = null;
+            }
+            if (st != null) {
+                try { st.release(); } catch (Throwable ignored) {}
+                st = null;
+            }
+            texture = 0;
+            queued = false;
+            owner = null;
+            w = h = 0;
+        }
     }
 
     /** 0 = la ventana que se mueve encima; 1 = la de debajo. */
@@ -234,15 +317,17 @@ final class TelonRenderer {
 
     /** Capa y contexto para una pantalla de w × h (se reutilizan entre transiciones). */
     static boolean ensure(SurfaceControl root, int w, int h) {
+        assertGlThread();
+        if (root == null || !root.isValid() || w <= 0 || h <= 0) return false;
         float s = Math.max(0.3f, Math.min(1f, scale));
         int bw = Math.round(w * s), bh = Math.round(h * s);
         if (layer != null && layer.isValid() && window != EGL14.EGL_NO_SURFACE && bw == width && bh == height
                 && Math.abs(s - layerScale) < 0.001f) {
             return true;
         }
-        releaseLayer();
+        if (releaseLayer()) destroyEglContext();
         try {
-            if (!initContext()) return false;
+            initContext();
             SurfaceControl sc = new SurfaceControl.Builder()
                     .setName("Telon")
                     .setBufferSize(bw, bh)
@@ -250,6 +335,7 @@ final class TelonRenderer {
                     .setOpaque(false)
                     .setParent(root)
                     .build();
+            layer = sc;
             SurfaceControl.Transaction t = new SurfaceControl.Transaction();
             t.setVisibility(sc, false);
             Matrix m = new Matrix();
@@ -258,17 +344,16 @@ final class TelonRenderer {
             t.apply();
             output = new Surface(sc);
             window = EGL14.eglCreateWindowSurface(display, config, output, new int[]{EGL14.EGL_NONE}, 0);
-            if (window == EGL14.EGL_NO_SURFACE) throw new IllegalStateException("eglCreateWindowSurface " + EGL14.eglGetError());
+            if (window == EGL14.EGL_NO_SURFACE) throw new EglFailure("eglCreateWindowSurface", EGL14.eglGetError());
             makeCurrent();
-            EGL14.eglSwapInterval(display, 0);
-            layer = sc;
+            setNonBlockingSwapInterval();
             width = bw;
             height = bh;
             layerScale = s;
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo preparar OpenGL", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -279,125 +364,179 @@ final class TelonRenderer {
     }
 
     private static boolean initContext() {
-        if (context != EGL14.EGL_NO_CONTEXT) return true;
-        display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
-        int[] v = new int[2];
-        if (!EGL14.eglInitialize(display, v, 0, v, 1)) throw new IllegalStateException("eglInitialize");
-        EGLConfig[] configs = new EGLConfig[1];
-        int[] n = new int[1];
-        int[] attrs = {
-                EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT | EGL14.EGL_PBUFFER_BIT,
-                EGL14.EGL_NONE};
-        if (!EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, n, 0) || n[0] == 0) throw new IllegalStateException("eglChooseConfig");
-        config = configs[0];
-        context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT,
-                new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE}, 0);
-        if (context == EGL14.EGL_NO_CONTEXT) throw new IllegalStateException("eglCreateContext");
-        EGLSurface pb = EGL14.eglCreatePbufferSurface(display, config, new int[]{EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE}, 0);
-        EGL14.eglMakeCurrent(display, pb, pb, context);
-        program = GLES20.glCreateProgram();
-        GLES20.glAttachShader(program, compile(GLES20.GL_VERTEX_SHADER, VERTEX));
-        GLES20.glAttachShader(program, compile(GLES20.GL_FRAGMENT_SHADER, FRAGMENT));
-        GLES20.glLinkProgram(program);
-        int[] ok = new int[1];
-        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, ok, 0);
-        if (ok[0] == 0) throw new IllegalStateException("enlace: " + GLES20.glGetProgramInfoLog(program));
-        aRow = GLES20.glGetAttribLocation(program, "aRow");
-        uM = GLES20.glGetUniformLocation(program, "M");
-        uWin = GLES20.glGetUniformLocation(program, "win");
-        uBend = GLES20.glGetUniformLocation(program, "bend");
-        uPower = GLES20.glGetUniformLocation(program, "power");
-        uMargin = GLES20.glGetUniformLocation(program, "margin");
-        uScale = GLES20.glGetUniformLocation(program, "scale");
-        uBuf = GLES20.glGetUniformLocation(program, "buf");
-        uTexM = GLES20.glGetUniformLocation(program, "texM");
-        uRadius = GLES20.glGetUniformLocation(program, "radius");
-        uAlpha = GLES20.glGetUniformLocation(program, "alpha");
-        uAa = GLES20.glGetUniformLocation(program, "aa");
-        uContent = GLES20.glGetUniformLocation(program, "content");
-        uBlur = GLES20.glGetUniformLocation(program, "blur");
-        programBelow = GLES20.glCreateProgram();
-        GLES20.glAttachShader(programBelow, compile(GLES20.GL_VERTEX_SHADER, VERTEX));
-        GLES20.glAttachShader(programBelow, compile(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_BELOW));
-        GLES20.glLinkProgram(programBelow);
-        GLES20.glGetProgramiv(programBelow, GLES20.GL_LINK_STATUS, ok, 0);
-        if (ok[0] == 0) throw new IllegalStateException("enlace (debajo): " + GLES20.glGetProgramInfoLog(programBelow));
-        bRow = GLES20.glGetAttribLocation(programBelow, "aRow");
-        bM = GLES20.glGetUniformLocation(programBelow, "M");
-        bWin = GLES20.glGetUniformLocation(programBelow, "win");
-        bBend = GLES20.glGetUniformLocation(programBelow, "bend");
-        bPower = GLES20.glGetUniformLocation(programBelow, "power");
-        bMargin = GLES20.glGetUniformLocation(programBelow, "margin");
-        bScale = GLES20.glGetUniformLocation(programBelow, "scale");
-        bBuf = GLES20.glGetUniformLocation(programBelow, "buf");
-        bTexM = GLES20.glGetUniformLocation(programBelow, "texM");
-        bRadius = GLES20.glGetUniformLocation(programBelow, "radius");
-        bAlpha = GLES20.glGetUniformLocation(programBelow, "alpha");
-        bAa = GLES20.glGetUniformLocation(programBelow, "aa");
-        bContent = GLES20.glGetUniformLocation(programBelow, "content");
-        bBlurred = GLES20.glGetUniformLocation(programBelow, "blurred");
-        bBtexel = GLES20.glGetUniformLocation(programBelow, "btexel");
-        bAmount = GLES20.glGetUniformLocation(programBelow, "amount");
-        bSoft = GLES20.glGetUniformLocation(programBelow, "soft");
-        bDim = GLES20.glGetUniformLocation(programBelow, "dim");
-        programDownExt = link(VERTEX_QUAD, FRAGMENT_DOWN_EXT);
-        dePos = GLES20.glGetAttribLocation(programDownExt, "aPos");
-        deSrc = GLES20.glGetUniformLocation(programDownExt, "src");
-        deTexM = GLES20.glGetUniformLocation(programDownExt, "texM");
-        deStep = GLES20.glGetUniformLocation(programDownExt, "step");
-        programDown = link(VERTEX_QUAD, FRAGMENT_DOWN);
-        dPos = GLES20.glGetAttribLocation(programDown, "aPos");
-        dSrc = GLES20.glGetUniformLocation(programDown, "src");
-        dStep = GLES20.glGetUniformLocation(programDown, "step");
-        int[] tex = new int[2];
-        GLES20.glGenTextures(2, tex, 0);
-        for (int i = 0; i < 2; i++) {
-            Input in = inputs[i];
-            in.texture = tex[i];
-            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, in.texture);
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-            in.st = new SurfaceTexture(in.texture);
-            in.surface = new Surface(in.st);
+        assertGlThread();
+        if (context != EGL14.EGL_NO_CONTEXT && displayInitialized) return true;
+
+        EGLSurface pbuffer = EGL14.EGL_NO_SURFACE;
+        try {
+            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
+            if (display == EGL14.EGL_NO_DISPLAY) throw new EglFailure("eglGetDisplay", EGL14.eglGetError());
+
+            int[] version = new int[2];
+            checkEgl(EGL14.eglInitialize(display, version, 0, version, 1), "eglInitialize");
+            displayInitialized = true;
+            checkEgl(EGL14.eglBindAPI(EGL14.EGL_OPENGL_ES_API), "eglBindAPI(OpenGL ES)");
+
+            EGLConfig[] configs = new EGLConfig[1];
+            int[] count = new int[1];
+            int[] attrs = {
+                    EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
+                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT | EGL14.EGL_PBUFFER_BIT,
+                    EGL14.EGL_NONE};
+            checkEgl(EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, count, 0), "eglChooseConfig");
+            if (count[0] == 0) throw new IllegalStateException("No EGLConfig supports window+pbuffer GLES2");
+
+            config = configs[0];
+            context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT,
+                    new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE}, 0);
+            if (context == EGL14.EGL_NO_CONTEXT) throw new EglFailure("eglCreateContext", EGL14.eglGetError());
+
+            pbuffer = EGL14.eglCreatePbufferSurface(display, config,
+                    new int[]{EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE}, 0);
+            if (pbuffer == EGL14.EGL_NO_SURFACE) throw new EglFailure("eglCreatePbufferSurface", EGL14.eglGetError());
+            checkEgl(EGL14.eglMakeCurrent(display, pbuffer, pbuffer, context), "eglMakeCurrent(pbuffer)");
+
+            program = link(VERTEX, FRAGMENT);
+            aRow = GLES20.glGetAttribLocation(program, "aRow");
+            uM = GLES20.glGetUniformLocation(program, "M");
+            uWin = GLES20.glGetUniformLocation(program, "win");
+            uBend = GLES20.glGetUniformLocation(program, "bend");
+            uPower = GLES20.glGetUniformLocation(program, "power");
+            uMargin = GLES20.glGetUniformLocation(program, "margin");
+            uScale = GLES20.glGetUniformLocation(program, "scale");
+            uBuf = GLES20.glGetUniformLocation(program, "buf");
+            uTexM = GLES20.glGetUniformLocation(program, "texM");
+            uRadius = GLES20.glGetUniformLocation(program, "radius");
+            uAlpha = GLES20.glGetUniformLocation(program, "alpha");
+            uAa = GLES20.glGetUniformLocation(program, "aa");
+            uContent = GLES20.glGetUniformLocation(program, "content");
+            uBlur = GLES20.glGetUniformLocation(program, "blur");
+
+            programBelow = link(VERTEX, FRAGMENT_BELOW);
+            bRow = GLES20.glGetAttribLocation(programBelow, "aRow");
+            bM = GLES20.glGetUniformLocation(programBelow, "M");
+            bWin = GLES20.glGetUniformLocation(programBelow, "win");
+            bBend = GLES20.glGetUniformLocation(programBelow, "bend");
+            bPower = GLES20.glGetUniformLocation(programBelow, "power");
+            bMargin = GLES20.glGetUniformLocation(programBelow, "margin");
+            bScale = GLES20.glGetUniformLocation(programBelow, "scale");
+            bBuf = GLES20.glGetUniformLocation(programBelow, "buf");
+            bTexM = GLES20.glGetUniformLocation(programBelow, "texM");
+            bRadius = GLES20.glGetUniformLocation(programBelow, "radius");
+            bAlpha = GLES20.glGetUniformLocation(programBelow, "alpha");
+            bAa = GLES20.glGetUniformLocation(programBelow, "aa");
+            bContent = GLES20.glGetUniformLocation(programBelow, "content");
+            bBlurred = GLES20.glGetUniformLocation(programBelow, "blurred");
+            bBtexel = GLES20.glGetUniformLocation(programBelow, "btexel");
+            bAmount = GLES20.glGetUniformLocation(programBelow, "amount");
+            bSoft = GLES20.glGetUniformLocation(programBelow, "soft");
+            bDim = GLES20.glGetUniformLocation(programBelow, "dim");
+
+            programDownExt = link(VERTEX_QUAD, FRAGMENT_DOWN_EXT);
+            dePos = GLES20.glGetAttribLocation(programDownExt, "aPos");
+            deSrc = GLES20.glGetUniformLocation(programDownExt, "src");
+            deTexM = GLES20.glGetUniformLocation(programDownExt, "texM");
+            deStep = GLES20.glGetUniformLocation(programDownExt, "step");
+            programDown = link(VERTEX_QUAD, FRAGMENT_DOWN);
+            dPos = GLES20.glGetAttribLocation(programDown, "aPos");
+            dSrc = GLES20.glGetUniformLocation(programDown, "src");
+            dStep = GLES20.glGetUniformLocation(programDown, "step");
+
+            int[] tex = new int[2];
+            GLES20.glGenTextures(2, tex, 0);
+            if (tex[0] == 0 || tex[1] == 0) throw new IllegalStateException("glGenTextures returned 0");
+            synchronized (queueLock) {
+                for (int i = 0; i < inputs.length; i++) {
+                    Input in = inputs[i];
+                    in.texture = tex[i];
+                    GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, in.texture);
+                    GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+                    GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+                    GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+                    GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+                    in.st = new SurfaceTexture(in.texture);
+                    in.surface = new Surface(in.st);
+                    in.queued = false;
+                    in.owner = null;
+                    in.w = in.h = 0;
+                }
+            }
+            checkGlError("initialize curtain renderer");
+
+            checkEgl(EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                    EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT), "eglMakeCurrent(unbind pbuffer)");
+            checkEgl(EGL14.eglDestroySurface(display, pbuffer), "eglDestroySurface(pbuffer)");
+            pbuffer = EGL14.EGL_NO_SURFACE;
+            return true;
+        } catch (Throwable t) {
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                try {
+                    EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                            EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                } catch (Throwable ignored) {}
+                if (pbuffer != EGL14.EGL_NO_SURFACE) {
+                    try { EGL14.eglDestroySurface(display, pbuffer); } catch (Throwable ignored) {}
+                }
+            }
+            destroyEglContext();
+            throw t;
         }
-        EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-        EGL14.eglDestroySurface(display, pb);
-        return true;
     }
 
     private static int link(String vs, String fs) {
-        int p = GLES20.glCreateProgram();
-        GLES20.glAttachShader(p, compile(GLES20.GL_VERTEX_SHADER, vs));
-        GLES20.glAttachShader(p, compile(GLES20.GL_FRAGMENT_SHADER, fs));
-        GLES20.glLinkProgram(p);
-        int[] ok = new int[1];
-        GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, ok, 0);
-        if (ok[0] == 0) throw new IllegalStateException("enlace: " + GLES20.glGetProgramInfoLog(p));
-        return p;
+        int vertex = compile(GLES20.GL_VERTEX_SHADER, vs);
+        int pixel = 0;
+        int programId = 0;
+        try {
+            pixel = compile(GLES20.GL_FRAGMENT_SHADER, fs);
+            programId = GLES20.glCreateProgram();
+            if (programId == 0) throw new IllegalStateException("glCreateProgram returned 0");
+            GLES20.glAttachShader(programId, vertex);
+            GLES20.glAttachShader(programId, pixel);
+            GLES20.glLinkProgram(programId);
+            int[] ok = new int[1];
+            GLES20.glGetProgramiv(programId, GLES20.GL_LINK_STATUS, ok, 0);
+            if (ok[0] == 0) throw new IllegalStateException("enlace: " + GLES20.glGetProgramInfoLog(programId));
+            return programId;
+        } catch (Throwable t) {
+            if (programId != 0) GLES20.glDeleteProgram(programId);
+            throw t;
+        } finally {
+            GLES20.glDeleteShader(vertex);
+            if (pixel != 0) GLES20.glDeleteShader(pixel);
+        }
     }
 
     private static int compile(int type, String src) {
-        int s = GLES20.glCreateShader(type);
-        GLES20.glShaderSource(s, src);
-        GLES20.glCompileShader(s);
+        int shader = GLES20.glCreateShader(type);
+        if (shader == 0) throw new IllegalStateException("glCreateShader returned 0");
+        GLES20.glShaderSource(shader, src);
+        GLES20.glCompileShader(shader);
         int[] ok = new int[1];
-        GLES20.glGetShaderiv(s, GLES20.GL_COMPILE_STATUS, ok, 0);
-        if (ok[0] == 0) throw new IllegalStateException("shader: " + GLES20.glGetShaderInfoLog(s));
-        return s;
+        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, ok, 0);
+        if (ok[0] == 0) {
+            String info = GLES20.glGetShaderInfoLog(shader);
+            GLES20.glDeleteShader(shader);
+            throw new IllegalStateException("shader: " + info);
+        }
+        return shader;
     }
 
     private static void makeCurrent() {
-        if (!EGL14.eglMakeCurrent(display, window, window, context)) throw new IllegalStateException("eglMakeCurrent " + EGL14.eglGetError());
+        assertGlThread();
+        if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT
+                || window == EGL14.EGL_NO_SURFACE) {
+            throw new IllegalStateException("EGL renderer is not initialized");
+        }
+        checkEgl(EGL14.eglMakeCurrent(display, window, window, context), "eglMakeCurrent(window)");
     }
 
     // ------------------------------------------------------------------ contenido
 
     /** Hilo de capturas: deja la captura de una ventana lista para el siguiente dibujo. */
     static boolean queue(int slot, HardwareBuffer b, ColorSpace cs, Object owner) {
+        if (slot < 0 || slot >= inputs.length || b == null) return false;
         synchronized (queueLock) {
             Input in = inputs[slot];
             if (in.surface == null || in.queued) return false;
@@ -412,16 +551,21 @@ final class TelonRenderer {
 
     /** Hilo de dibujo: pasa la captura a su textura; devuelve de quién era (o null). */
     static Object consume(int slot) {
+        assertGlThread();
         synchronized (queueLock) {
             Input in = inputs[slot];
-            if (!in.queued) return null;
+            if (!in.queued || in.st == null) return null;
             in.queued = false;
             try {
                 in.st.updateTexImage();
                 in.st.getTransformMatrix(in.texMatrix);
-                return in.owner;
+                Object owner = in.owner;
+                in.owner = null;
+                return owner;
             } catch (Throwable e) {
+                in.owner = null;
                 Log.e("textura de la captura", e);
+                if (isContextLost(e)) recover(e);
                 return null;
             }
         }
@@ -438,8 +582,12 @@ final class TelonRenderer {
         if (fboTex[i] == 0) {
             GLES20.glGenTextures(1, v, 0);
             fboTex[i] = v[0];
+            if (fboTex[i] == 0) throw new IllegalStateException("Could not allocate blur texture");
+        }
+        if (fbo[i] == 0) {
             GLES20.glGenFramebuffers(1, v, 0);
             fbo[i] = v[0];
+            if (fbo[i] == 0) throw new IllegalStateException("Could not allocate blur framebuffer");
         }
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTex[i]);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
@@ -469,6 +617,7 @@ final class TelonRenderer {
      * más desenfoque). Dos pasadas a texturas diminutas: casi gratis incluso en una Mali-G52.
      */
     static boolean prepareBelow(float spread) {
+        assertGlThread();
         try {
             makeCurrent();
             Input in = inputs[BELOW];
@@ -494,19 +643,18 @@ final class TelonRenderer {
             GLES20.glUniform1i(dSrc, 0);
             drawQuad(dPos);
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            checkGlError("prepare curtain blur");
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo desenfocar la de debajo", e);
-            try {
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-            } catch (Throwable ignored) {
-            }
+            recover(e);
             return false;
         }
     }
 
     /** Empieza un fotograma (búfer transparente). Luego {@link #drawBelow}, {@link #drawTop}, {@link #end}. */
     static boolean begin() {
+        assertGlThread();
         try {
             makeCurrent();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
@@ -518,7 +666,7 @@ final class TelonRenderer {
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -538,6 +686,7 @@ final class TelonRenderer {
      * de movimiento {@code blur} (largo de la estela, px de la ventana; 0 = nítido).
      */
     static boolean drawTop(Matrix m, float alpha, float winW, float winH, float radius, float bend, float blur) {
+        assertGlThread();
         try {
             GLES20.glUseProgram(program);
             float sx = matrix(m);
@@ -563,7 +712,7 @@ final class TelonRenderer {
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
@@ -573,6 +722,7 @@ final class TelonRenderer {
      * oscurecida {@code dim} (lo que la oscurecería HyperOS: su capa de color se oculta con ella).
      */
     static boolean drawBelow(Matrix m, float alpha, float winW, float winH, float radius, float dim, float amount) {
+        assertGlThread();
         try {
             GLES20.glUseProgram(programBelow);
             float sx = matrix(m);
@@ -608,42 +758,103 @@ final class TelonRenderer {
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
 
     /** Termina el fotograma y lo manda al compositor. */
     static boolean end() {
+        assertGlThread();
         try {
-            if (!EGL14.eglSwapBuffers(display, window)) throw new IllegalStateException("eglSwapBuffers " + EGL14.eglGetError());
+            checkGlError("end curtain frame");
+            checkEgl(EGL14.eglSwapBuffers(display, window), "eglSwapBuffers");
             return true;
         } catch (Throwable e) {
             Log.e("no se pudo dibujar", e);
-            releaseLayer();
+            recover(e);
             return false;
         }
     }
 
-    static void releaseLayer() {
-        if (window != EGL14.EGL_NO_SURFACE) {
-            EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-            EGL14.eglDestroySurface(display, window);
-            window = EGL14.EGL_NO_SURFACE;
+    /** Releases the layer's EGL window surface but retains the reusable GL context. */
+    static boolean releaseLayer() {
+        assertGlThread();
+        boolean contextLost = false;
+        EGLSurface oldWindow = window;
+        window = EGL14.EGL_NO_SURFACE;
+        if (display != EGL14.EGL_NO_DISPLAY && context != EGL14.EGL_NO_CONTEXT) {
+            try {
+                if (!EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
+                    contextLost = isEglContextLostError(EGL14.eglGetError());
+                }
+            } catch (Throwable ignored) {
+            }
         }
-        if (output != null) output.release();
-        if (layer != null) {
+        if (oldWindow != EGL14.EGL_NO_SURFACE && display != EGL14.EGL_NO_DISPLAY) {
+            try {
+                if (!EGL14.eglDestroySurface(display, oldWindow)) {
+                    contextLost |= isEglContextLostError(EGL14.eglGetError());
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        Surface oldOutput = output;
+        output = null;
+        if (oldOutput != null) {
+            try { oldOutput.release(); } catch (Throwable ignored) {}
+        }
+
+        SurfaceControl oldLayer = layer;
+        layer = null;
+        if (oldLayer != null) {
             try {
                 SurfaceControl.Transaction t = new SurfaceControl.Transaction();
-                t.reparent(layer, null);
+                t.reparent(oldLayer, null);
                 t.apply();
             } catch (Throwable ignored) {
             }
-            layer.release();
+            try { oldLayer.release(); } catch (Throwable ignored) {}
         }
-        output = null;
-        layer = null;
         width = height = 0;
+        layerScale = 0f;
+        return contextLost;
+    }
+
+    /** Context loss invalidates every program, texture, and framebuffer name. */
+    private static void destroyEglContext() {
+        assertGlThread();
+        releaseLayer();
+
+        synchronized (queueLock) {
+            for (Input in : inputs) in.release();
+        }
+
+        if (display != EGL14.EGL_NO_DISPLAY && displayInitialized) {
+            try {
+                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+            } catch (Throwable ignored) {
+            }
+            if (context != EGL14.EGL_NO_CONTEXT) {
+                try { EGL14.eglDestroyContext(display, context); } catch (Throwable ignored) {}
+            }
+            try { EGL14.eglTerminate(display); } catch (Throwable ignored) {}
+        }
+
+        context = EGL14.EGL_NO_CONTEXT;
+        display = EGL14.EGL_NO_DISPLAY;
+        config = null;
+        displayInitialized = false;
+
+        program = programBelow = programDownExt = programDown = 0;
+        aRow = uM = uWin = uBend = uPower = uMargin = uScale = uBuf = uTexM = uRadius = uAlpha = uAa = uContent = uBlur = 0;
+        bM = bWin = bMargin = bScale = bBuf = bTexM = bRadius = bAlpha = bAa = bContent = bBlurred = bBtexel = bAmount = bSoft = bDim = bRow = bBend = bPower = 0;
+        dePos = deSrc = deTexM = deStep = dPos = dSrc = dStep = 0;
+        for (int i = 0; i < 2; i++) {
+            fboTex[i] = fbo[i] = fboW[i] = fboH[i] = 0;
+        }
     }
 
     private TelonRenderer() {
