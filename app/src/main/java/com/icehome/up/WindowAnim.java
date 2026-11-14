@@ -757,7 +757,7 @@ final class WindowAnim {
     }
 
     static Method method(Class<?> c, String name, Class<?>... types) {
-        Method m = XposedHelpers.findMethodExact(c, name, types);
+        Method m = XposedHelpers.findMethodExact(c, name, (Object) types);
         m.setAccessible(true);
         return m;
     }
