@@ -757,7 +757,10 @@ final class WindowAnim {
     }
 
     static Method method(Class<?> c, String name, Class<?>... types) {
-        Method m = XposedHelpers.findMethodExact(c, name, (Object) types);
+        // (Object[]) y no (Object): el shim recibe los tipos como varargs. Con (Object), el
+        // Class[] entero llegaba como un único "tipo" y todas las búsquedas fallaban (genio y
+        // zoom del fondo).
+        Method m = XposedHelpers.findMethodExact(c, name, (Object[]) types);
         m.setAccessible(true);
         return m;
     }

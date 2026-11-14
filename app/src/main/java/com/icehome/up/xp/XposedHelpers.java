@@ -121,6 +121,10 @@ public final class XposedHelpers {
     }
 
     private static Class<?>[] classes(ClassLoader cl, Object[] types) {
+        // Un Class[] pasado con un cast a Object llega como un único argumento. El XposedHelpers
+        // clásico lo acepta igual (el varargs se aplana); aquí se aplana también para que una
+        // llamada tipo findMethodExact(c, name, (Object) types) no rompa todos los enganches.
+        if (types.length == 1 && types[0] instanceof Class<?>[]) types = (Object[]) types[0];
         Class<?>[] out = new Class<?>[types.length];
         for (int i = 0; i < types.length; i++) {
             Object t = types[i];
