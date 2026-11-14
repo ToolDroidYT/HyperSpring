@@ -1,0 +1,5 @@
+# libxposed: carga con la API moderna en frameworks con API 101 o superior (Vector, LSPosed
+# actuales). targetApiVersion=102 es la API con la que esta escrito el modulo.
+minApiVersion=101
+targetApiVersion=102
+staticScope=false

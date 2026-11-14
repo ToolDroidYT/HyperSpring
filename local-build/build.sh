@@ -13,9 +13,14 @@ VNAME=$(sed -n 's/.*NAME = "\(.*\)";/\1/p' "$VFILE")
 VCODE=$(sed -n 's/.*CODE = \([0-9]*\);/\1/p' "$VFILE")
 rm -rf "$OUT" && mkdir -p "$OUT"/{stub,classes,dex,res,apk}
 
-# 1) Stubs de Xposed (solo para compilar; NO van al APK)
+# 1) Stubs de las dos API de Xposed (solo para compilar; NO van al APK)
+#    - xposed-stub: API clásica (93), para el motor antiguo.
+#    - libxposed-stub: libxposed (102), para el motor moderno. Usa Java 17 (sealed, record).
 javac -nowarn -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -d "$OUT/stub" \
   $(find local-build/xposed-stub -name '*.java') 2>&1 | grep -v "^warning\|^Note\|^[0-9] warning" || true
+javac -nowarn -encoding UTF-8 --release 17 -cp "$ANDROID_JAR" -d "$OUT/stub" \
+  $(find local-build/libxposed-stub -name '*.java') 2>&1 | grep -v "^warning\|^Note\|^[0-9] warning" || true
+[ -f "$OUT/stub/io/github/libxposed/api/XposedModule.class" ] || { echo "ERROR: no compila el stub de libxposed"; exit 1; }
 
 # 2) Código del módulo
 # Comprobar los shaders AGSL antes de compilar (si hay skia-python)
@@ -36,7 +41,11 @@ java -cp "$JADX_JAR" com.android.tools.r8.D8 --release --min-api 30 --lib "$ANDR
   --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
 
 # 4) Recursos + manifiesto con aapt2 (incluido en apktool)
-AAPT2="$OUT/aapt2"; unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2_64 > "$AAPT2"; chmod +x "$AAPT2"
+# apktool 2.x lo llama aapt2_64; apktool 3.x, aapt2.
+AAPT2="$OUT/aapt2"
+unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2_64 > "$AAPT2" 2>/dev/null || true
+[ -s "$AAPT2" ] || unzip -p "$TOOLS/apktool.jar" prebuilt/linux/aapt2 > "$AAPT2"
+chmod +x "$AAPT2"
 "$AAPT2" compile --dir app/src/main/res -o "$OUT/res/res.zip"
 # Gradle inyecta el package desde "namespace"; aquí lo añadimos a mano
 sed 's#<manifest #<manifest package="com.icehome.up" #' app/src/main/AndroidManifest.xml > "$OUT/AndroidManifest.xml"
@@ -46,7 +55,19 @@ sed 's#<manifest #<manifest package="com.icehome.up" #' app/src/main/AndroidMani
   -o "$OUT/apk/unsigned.apk" "$OUT/res/res.zip"
 (cd "$OUT/dex" && zip -q -j ../apk/unsigned.apk classes.dex)
 
-# 5) Alinear y firmar (clave de depuración de uber-apk-signer)
-java -jar "$TOOLS/uber-apk-signer.jar" -a "$OUT/apk/unsigned.apk" -o "$OUT/apk/signed" --allowResign >/dev/null
-cp "$OUT"/apk/signed/*.apk "$OUT/HyperSpring.apk"
-echo "OK -> $OUT/HyperSpring.apk"
+# 5) Dos APK con el mismo código:
+#    - HyperSpring.apk: lleva META-INF/xposed (libxposed, API 102). Para Vector y LSPosed actuales.
+#    - HyperSpring-legacy.apk: sin META-INF/xposed, solo API clásica (93). Para LSPosed antiguos,
+#      que al ver META-INF/xposed intentarían cargarlo con la API 100 (ya retirada) y fallarían.
+mkdir -p "$OUT/apk/legacy" "$OUT/apk/modern"
+cp "$OUT/apk/unsigned.apk" "$OUT/apk/legacy/HyperSpring-legacy.apk"
+mv "$OUT/apk/unsigned.apk" "$OUT/apk/modern/HyperSpring.apk"
+(cd app/src/main/resources && zip -q -r "../../../../$OUT/apk/modern/HyperSpring.apk" META-INF/xposed)
+
+# 6) Alinear y firmar (clave de depuración de uber-apk-signer)
+for v in modern legacy; do
+  java -jar "$TOOLS/uber-apk-signer.jar" -a "$OUT/apk/$v" -o "$OUT/apk/$v/signed" --allowResign >/dev/null
+done
+cp "$OUT"/apk/modern/signed/*.apk "$OUT/HyperSpring.apk"
+cp "$OUT"/apk/legacy/signed/*.apk "$OUT/HyperSpring-legacy.apk"
+echo "OK -> $OUT/HyperSpring.apk (API 102) y $OUT/HyperSpring-legacy.apk (API 93)"

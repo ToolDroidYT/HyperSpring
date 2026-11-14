@@ -6,8 +6,8 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Muelles de abrir y cerrar apps. MIUI da un muelle (amortiguación, periodo) a cada propiedad:

@@ -12,32 +12,41 @@ import android.view.Choreographer;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.Random;
 
 /**
- * Fondo vivo de las páginas de la app: una red de puntos que se mueven al azar y se unen con
- * líneas finas cuando se acercan. En «Acerca de», en su lugar, dos brillos de color que pasan
- * por detrás (coral, el del icono, por un lado y azul por el contrario).
+ * Fondo vivo de las páginas de la app: cuatro manchas de color (sacadas de Monet, el color del
+ * sistema) que se mezclan entre sí y se desplazan despacio, como un «mesh gradient».
  * <p>
+ * Dos modos:
+ * <ul>
+ * <li><b>Normal</b> (listas de ajustes): las manchas se quedan en la parte de arriba y se funden
+ * con el fondo hacia abajo, para que las tarjetas se lean bien.</li>
+ * <li><b>Libre</b> («Acerca de» y la bienvenida): las manchas recorren toda la pantalla, cada una
+ * por su propio camino (curvas de Lissajous: un seno en x y otro de distinta velocidad en y, así
+ * nunca repiten el mismo recorrido a la vez).</li>
+ * </ul>
  * Va de fondo del ScrollView de cada página: el fondo de una vista no se desplaza con el
  * contenido, así que queda fijo mientras las tarjetas pasan por encima, y la barra de cristal lo
- * ve (y lo refracta) porque es parte de la página. Todas las páginas comparten la misma red, así
- * que al cambiar de pestaña no salta. Un solo bucle de fotogramas para todas, que se para con la
- * app en segundo plano ({@link #pause()} / {@link #resume()}).
+ * ve (y lo refracta) porque es parte de la página. Un solo bucle de fotogramas para todas, que se
+ * para con la app en segundo plano ({@link #pause()} / {@link #resume()}).
  */
 final class LiveBackground extends Drawable {
 
     /** Color del icono. */
     static final int CORAL = 0xFFF0604D;
-    /** El del lado contrario. */
-    static final int BLUE = 0xFF4C6FFF;
 
-    private static final String GLOW =
+    private static final String MESH =
             "uniform float2 size;\n"
             + "uniform float time;\n"
-            + "uniform half4 c1;\n"
-            + "uniform half4 c2;\n"
-            + "uniform half4 base;\n"
+            + "uniform float roam;\n"
+            + "uniform float amount;\n"
+            // layout(color): Android los convierte al espacio de color de la pantalla (y sin esto
+            // setColorUniform falla y el fondo cae en el plan B)
+            + "layout(color) uniform half4 c1;\n"
+            + "layout(color) uniform half4 c2;\n"
+            + "layout(color) uniform half4 c3;\n"
+            + "layout(color) uniform half4 c4;\n"
+            + "layout(color) uniform half4 base;\n"
             + "half blob(float2 p, float2 c, float k) {\n"
             + "  float2 d = p - c;\n"
             + "  return half(exp(-dot(d, d) * k));\n"
@@ -46,83 +55,88 @@ final class LiveBackground extends Drawable {
             + "  float2 p = coord / size.x;\n"
             + "  float hgt = size.y / size.x;\n"
             + "  float t = time;\n"
+            // ondulación suave del espacio: los bordes de las manchas no son círculos perfectos
             + "  p += 0.05 * float2(sin(p.y * 3.3 + t * 0.8), cos(p.x * 2.6 - t * 0.6));\n"
-            // coral por la izquierda y azul por la derecha; los dos cruzan por detrás del logo
-            + "  float2 a = float2(0.22 + 0.26 * sin(t * 0.31), hgt * (0.14 + 0.08 * cos(t * 0.27)));\n"
-            + "  float2 b = float2(0.80 - 0.26 * sin(t * 0.23 + 1.3), hgt * (0.22 + 0.10 * sin(t * 0.35)));\n"
-            + "  float2 a2 = float2(0.15 + 0.20 * sin(t * 0.19 + 2.0), hgt * (0.70 + 0.10 * cos(t * 0.29)));\n"
-            + "  float2 b2 = float2(0.85 - 0.20 * sin(t * 0.17 + 0.4), hgt * (0.55 + 0.12 * sin(t * 0.21)));\n"
-            + "  half wa = blob(p, a, 3.4), wb = blob(p, b, 3.0), wa2 = blob(p, a2, 3.6) * 0.45, wb2 = blob(p, b2, 3.2) * 0.45;\n"
-            + "  half ka = wa + wa2, kb = wb + wb2;\n"
-            + "  half qa = ka * ka, qb = kb * kb;\n"
-            + "  half4 col = (c1 * qa + c2 * qb) / (qa + qb + 0.0001);\n"
-            + "  half glow = clamp((ka + kb) * 1.1, 0.0, 1.0);\n"
+            // libre: centro a media pantalla y recorrido de arriba abajo; normal: solo la parte de arriba
+            + "  float yc = hgt * mix(0.20, 0.50, roam);\n"
+            + "  float ya = hgt * mix(0.16, 0.44, roam);\n"
+            + "  float xa = mix(0.30, 0.44, roam);\n"
+            + "  float2 a = float2(0.5 + xa * sin(t * 0.21), yc + ya * sin(t * 0.17 + 1.0));\n"
+            + "  float2 b = float2(0.5 + xa * sin(t * 0.16 + 2.1), yc + ya * cos(t * 0.13 + 0.3));\n"
+            + "  float2 c = float2(0.5 + xa * cos(t * 0.19 + 4.0), yc + ya * sin(t * 0.11 + 2.6));\n"
+            + "  float2 d = float2(0.5 + xa * sin(t * 0.13 + 5.2), yc + ya * cos(t * 0.15 + 4.4));\n"
+            + "  float k = mix(3.2, 2.2, roam);\n"
+            + "  half wa = blob(p, a, k), wb = blob(p, b, k), wc = blob(p, c, k * 1.15), wd = blob(p, d, k * 1.3);\n"
+            // cada punto toma sobre todo el color de la mancha más cercana (pesos al cuadrado)
+            + "  half qa = wa * wa, qb = wb * wb, qc = wc * wc, qd = wd * wd;\n"
+            + "  half4 col = (c1 * qa + c2 * qb + c3 * qc + c4 * qd) / (qa + qb + qc + qd + 0.0001);\n"
+            + "  half glow = clamp((wa + wb + wc + wd) * 1.2, 0.0, 1.0) * half(amount);\n"
             + "  col = mix(base, col, glow);\n"
+            // grano finísimo: evita las franjas de un degradado tan suave
             + "  half n = half(fract(sin(dot(coord, float2(12.9898, 78.233))) * 43758.5453) - 0.5);\n"
-            + "  col.rgb += n * 0.010;\n"
+            + "  col.rgb += n * 0.012;\n"
             + "  return half4(col.rgb, 1.0);\n"
             + "}\n";
 
-    // ------------------------------------------------------------------ red de puntos compartida
-
-    private static final int N = 46;
-    /** Distancia (en anchos de pantalla) a la que dos puntos se unen. */
-    private static final float LINK = 0.27f;
-    private static final float[] X = new float[N], Y = new float[N], VX = new float[N], VY = new float[N];
-    private static final Random RND = new Random();
-    private static float aspect = 2.2f;
-    private static boolean seeded;
-    private static long last;
-    private static float time;
-
-    private static void seed(float asp) {
-        aspect = asp;
-        for (int i = 0; i < N; i++) {
-            X[i] = RND.nextFloat();
-            Y[i] = RND.nextFloat() * aspect;
-            double ang = RND.nextDouble() * Math.PI * 2;
-            float sp = 0.018f + RND.nextFloat() * 0.022f;          // anchos de pantalla por segundo
-            VX[i] = (float) Math.cos(ang) * sp;
-            VY[i] = (float) Math.sin(ang) * sp;
-        }
-        seeded = true;
-    }
-
-    private static void step(float dt) {
-        for (int i = 0; i < N; i++) {
-            // Paseo al azar: el rumbo gira un poco cada fotograma; la velocidad se mantiene.
-            float turn = (RND.nextFloat() - 0.5f) * 1.6f * dt;
-            float c = (float) Math.cos(turn), s = (float) Math.sin(turn);
-            float vx = VX[i] * c - VY[i] * s, vy = VX[i] * s + VY[i] * c;
-            VX[i] = vx;
-            VY[i] = vy;
-            X[i] += vx * dt;
-            Y[i] += vy * dt;
-            if (X[i] < -0.05f && VX[i] < 0 || X[i] > 1.05f && VX[i] > 0) VX[i] = -VX[i];
-            if (Y[i] < -0.05f && VY[i] < 0 || Y[i] > aspect + 0.05f && VY[i] > 0) VY[i] = -VY[i];
-        }
-    }
+    /**
+     * Curvas de nivel que fluyen sin fin, como un mapa topográfico vivo. Un «campo» suave (suma
+     * de senos que se deforman unos a otros) se mueve con el tiempo; se dibuja una línea fina allí
+     * donde el campo cruza un número entero. Como el tiempo solo avanza, nunca se repite.
+     * El grosor se mide en píxeles reales: se mira cuánto cambia el campo de un píxel al de al
+     * lado (AGSL no tiene fwidth), y así las líneas no engordan donde el campo cambia despacio.
+     */
+    private static final String LINES =
+            "uniform float2 size;\n"
+            + "uniform float time;\n"
+            + "uniform float alpha;\n"
+            + "uniform float lineW;\n"
+            + "layout(color) uniform half4 c1;\n"
+            + "layout(color) uniform half4 c2;\n"
+            + "layout(color) uniform half4 base;\n"
+            + "float field(float2 p, float t) {\n"
+            + "  return sin(p.x * 1.6 + t * 0.21 + 1.3 * sin(p.y * 1.1 - t * 0.17))\n"
+            + "       + sin(p.y * 1.9 - t * 0.15 + 1.1 * sin(p.x * 1.4 + t * 0.12))\n"
+            + "       + 0.6 * sin((p.x + p.y) * 2.3 + t * 0.10);\n"
+            + "}\n"
+            + "half4 main(float2 coord) {\n"
+            + "  float k = 3.0 / size.x;\n"
+            + "  float2 p = coord * k;\n"
+            + "  float t = time;\n"
+            + "  float v = field(p, t) * 2.0;\n"
+            + "  float vx = field(p + float2(k, 0.0), t) * 2.0 - v;\n"
+            + "  float vy = field(p + float2(0.0, k), t) * 2.0 - v;\n"
+            + "  float g = max(length(float2(vx, vy)), 0.0001);\n"
+            // distancia (en píxeles) a la curva de nivel más cercana
+            + "  float dist = abs(fract(v + 0.5) - 0.5) / g;\n"
+            + "  half line = half(1.0 - smoothstep(lineW, lineW + 1.2, dist));\n"
+            + "  half4 lc = mix(c1, c2, half(clamp(coord.x / size.x * 0.7 + coord.y / size.y * 0.3, 0.0, 1.0)));\n"
+            // algo más visibles arriba, más tranquilas abajo, donde se lee
+            + "  half fade = half(mix(1.0, 0.5, clamp(coord.y / size.y, 0.0, 1.0)));\n"
+            + "  half4 col = mix(base, lc, line * half(alpha) * fade);\n"
+            + "  return half4(col.rgb, 1.0);\n"
+            + "}\n";
 
     // ------------------------------------------------------------------ bucle común
 
     private static final ArrayList<LiveBackground> LIVE = new ArrayList<>();
     private static Runnable onFrame;
     private static boolean running, paused;
+    private static long last;
+    private static float time;
     private static final Choreographer.FrameCallback LOOP = new Choreographer.FrameCallback() {
         @Override
         public void doFrame(long now) {
             if (!running) return;
             float dt = last == 0 ? 0f : Math.min(0.05f, (now - last) / 1e9f);
             last = now;
-            time += dt * 2.6f;
-            if (seeded) step(dt);
+            time += dt * 1.6f;                                     // lento: se nota, pero no distrae
             for (int i = 0; i < LIVE.size(); i++) LIVE.get(i).invalidateSelf();
             if (onFrame != null) onFrame.run();
             Choreographer.getInstance().postFrameCallback(this);
         }
     };
 
-    /** Lo que hay que redibujar además en cada fotograma (la barra de cristal, que lo refracta). */
+    /** Lo que hay que redibujar además en cada fotograma (el cristal que refracta el fondo). */
     static void setOnFrame(Runnable r) {
         onFrame = r;
     }
@@ -149,47 +163,87 @@ final class LiveBackground extends Drawable {
     // ------------------------------------------------------------------ cada página
 
     private final int base;
-    private final float dp;
-    private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG),
-            glowPaint = new Paint();
-    private RuntimeShader glow;
-    private final boolean about;
-    private final Paint[] blobs = new Paint[2];
+    private final int[] cols;
+    private final float amount;
+    private final boolean roam;
+    private final Paint paint = new Paint();
+    private RuntimeShader mesh;
+    private final Paint[] blobs = new Paint[4];
     private final android.graphics.Matrix m = new android.graphics.Matrix();
 
     /**
-     * @param withGlow los brillos de color de «Acerca de»
+     * @param base   color de fondo donde no llegan las manchas
+     * @param colors los cuatro colores de las manchas (se repiten si hay menos)
+     * @param amount cuánto color se ve (0 = solo el fondo, 1 = las manchas puras)
+     * @param roam   true: recorren toda la pantalla; false: se quedan arriba
      */
-    LiveBackground(int base, float dp, boolean withGlow) {
+    LiveBackground(int base, int[] colors, float amount, boolean roam) {
         this.base = base;
-        this.dp = dp;
-        this.about = withGlow;
-        dot.setColor(0xFFFFFFFF);
-        line.setColor(0xFFFFFFFF);
-        line.setStrokeWidth(Math.max(1f, 0.8f * dp));
-        if (withGlow && Build.VERSION.SDK_INT >= 33) {
+        this.amount = amount;
+        this.roam = roam;
+        cols = new int[4];
+        for (int i = 0; i < 4; i++) cols[i] = colors[i % colors.length];
+        if (Build.VERSION.SDK_INT >= 33) {
             try {
-                glow = new RuntimeShader(GLOW);
-                glow.setColorUniform("c1", blend(base, CORAL, 0.62f));
-                glow.setColorUniform("c2", blend(base, BLUE, 0.55f));
-                glow.setColorUniform("base", base);
-                glowPaint.setShader(glow);
+                mesh = new RuntimeShader(MESH);
+                mesh.setColorUniform("c1", cols[0]);
+                mesh.setColorUniform("c2", cols[1]);
+                mesh.setColorUniform("c3", cols[2]);
+                mesh.setColorUniform("c4", cols[3]);
+                mesh.setColorUniform("base", base);
+                mesh.setFloatUniform("roam", roam ? 1f : 0f);
+                mesh.setFloatUniform("amount", amount);
+                paint.setShader(mesh);
             } catch (Throwable t) {
-                glow = null;
+                android.util.Log.w("HyperSpring", "fondo: el sombreador no compila", t);
+                mesh = null;
             }
         }
-        if (withGlow && glow == null) {
-            // Sin AGSL: dos degradados radiales que se mueven.
-            int[] cols = {blend(base, CORAL, 0.62f), blend(base, BLUE, 0.55f)};
-            for (int i = 0; i < 2; i++) {
+        if (mesh == null) {
+            // Sin AGSL: cuatro degradados radiales que se mueven.
+            for (int i = 0; i < 4; i++) {
+                int c = (Math.round(255 * amount * 0.8f) << 24) | (cols[i] & 0x00FFFFFF);
                 blobs[i] = new Paint(Paint.ANTI_ALIAS_FLAG);
-                blobs[i].setShader(new android.graphics.RadialGradient(0, 0, 1f, cols[i], cols[i] & 0x00FFFFFF,
+                blobs[i].setShader(new android.graphics.RadialGradient(0, 0, 1f, c, c & 0x00FFFFFF,
                         android.graphics.Shader.TileMode.CLAMP));
             }
         }
     }
 
-    /** Pone el fondo en la página y lo anima solo mientras está en pantalla. */
+    /** Para {@link #lines}: solo el color de fondo, el sombreador se pone después. */
+    private LiveBackground(int base) {
+        this.base = base;
+        this.amount = 0f;
+        this.roam = false;
+        this.cols = null;
+    }
+
+    /**
+     * Fondo de las páginas de ajustes: curvas de nivel finas que fluyen sin fin.
+     *
+     * @param alpha cuánto se ven las líneas (0-1)
+     * @param dp    densidad de la pantalla, para el grosor de las líneas
+     */
+    static LiveBackground lines(int base, int c1, int c2, float alpha, float dp) {
+        LiveBackground lb = new LiveBackground(base);
+        if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                RuntimeShader s = new RuntimeShader(LINES);
+                s.setColorUniform("c1", c1);
+                s.setColorUniform("c2", c2);
+                s.setColorUniform("base", base);
+                s.setFloatUniform("alpha", alpha);
+                s.setFloatUniform("lineW", 0.45f * dp);
+                lb.mesh = s;
+                lb.paint.setShader(s);
+            } catch (Throwable t) {
+                android.util.Log.w("HyperSpring", "fondo de líneas: el sombreador no compila", t);
+            }
+        }
+        return lb;                                   // sin AGSL: color liso
+    }
+
+    /** Pone el fondo en la vista y lo anima solo mientras está en pantalla. */
     void attachTo(View page) {
         page.setBackground(this);
         page.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -212,44 +266,27 @@ final class LiveBackground extends Drawable {
         Rect b = getBounds();
         float w = b.width(), h = b.height();
         if (w <= 0 || h <= 0) return;
-        if (!seeded) seed(h / w);
-        if (glow != null) {
-            glow.setFloatUniform("size", w, h);
-            glow.setFloatUniform("time", time);
-            canvas.drawRect(b, glowPaint);
-        } else {
-            canvas.drawColor(base);
-            if (blobs[0] != null) {
-                float[][] at = {
-                        {0.22f + 0.26f * (float) Math.sin(time * 0.31), 0.14f * h / w + 0.08f * (float) Math.cos(time * 0.27)},
-                        {0.80f - 0.26f * (float) Math.sin(time * 0.23 + 1.3), 0.22f * h / w + 0.10f * (float) Math.sin(time * 0.35)}};
-                for (int i = 0; i < 2; i++) {
-                    m.setScale(w * 0.75f, w * 0.75f);
-                    m.postTranslate(b.left + at[i][0] * w, b.top + at[i][1] * w);
-                    blobs[i].getShader().setLocalMatrix(m);
-                    canvas.drawRect(b, blobs[i]);
-                }
-            }
+        if (mesh != null) {
+            mesh.setFloatUniform("size", w, h);
+            mesh.setFloatUniform("time", time);
+            canvas.drawRect(b, paint);
+            return;
         }
-        if (about) return;                                         // «Acerca de»: solo los brillos
-        float sy = h / (aspect * w);                               // por si esta página mide distinto
-        for (int i = 0; i < N; i++) {
-            float xi = b.left + X[i] * w, yi = b.top + Y[i] * w * sy;
-            for (int j = i + 1; j < N; j++) {
-                float dx = X[i] - X[j], dy = (Y[i] - Y[j]) * sy;
-                float d2 = dx * dx + dy * dy;
-                if (d2 >= LINK * LINK) continue;
-                float f = 1f - (float) Math.sqrt(d2) / LINK;
-                line.setAlpha((int) (f * 72));
-                canvas.drawLine(xi, yi, b.left + X[j] * w, b.top + Y[j] * w * sy, line);
-            }
-        }
-        for (int i = 0; i < N; i++) {
-            float xi = b.left + X[i] * w, yi = b.top + Y[i] * w * sy;
-            dot.setAlpha(34);
-            canvas.drawCircle(xi, yi, 4.5f * dp, dot);             // halo
-            dot.setAlpha(140);
-            canvas.drawCircle(xi, yi, 1.9f * dp, dot);
+        canvas.drawColor(base);
+        if (cols == null) return;                    // líneas sin AGSL: color liso
+        float hgt = h / w, r = roam ? 1f : 0f;
+        float yc = hgt * Motion.lerp(0.20f, 0.50f, r), ya = hgt * Motion.lerp(0.16f, 0.44f, r), xa = Motion.lerp(0.30f, 0.44f, r);
+        double t = time;
+        float[][] at = {
+                {0.5f + xa * (float) Math.sin(t * 0.21), yc + ya * (float) Math.sin(t * 0.17 + 1.0)},
+                {0.5f + xa * (float) Math.sin(t * 0.16 + 2.1), yc + ya * (float) Math.cos(t * 0.13 + 0.3)},
+                {0.5f + xa * (float) Math.cos(t * 0.19 + 4.0), yc + ya * (float) Math.sin(t * 0.11 + 2.6)},
+                {0.5f + xa * (float) Math.sin(t * 0.13 + 5.2), yc + ya * (float) Math.cos(t * 0.15 + 4.4)}};
+        for (int i = 0; i < 4; i++) {
+            m.setScale(w * 0.7f, w * 0.7f);
+            m.postTranslate(b.left + at[i][0] * w, b.top + at[i][1] * w);
+            blobs[i].getShader().setLocalMatrix(m);
+            canvas.drawRect(b, blobs[i]);
         }
     }
 

@@ -24,7 +24,7 @@ import android.graphics.Shader;
  *  3. Luz de la lente: brillo según la dirección de la luz, contraluz, línea cáustica y un leve
  *     surco oscuro hacia dentro (grosor del cristal).
  */
-final class GlassShader {
+public final class GlassShader {
 
     static final String AGSL =
             "uniform shader wall;\n"
@@ -156,7 +156,7 @@ final class GlassShader {
     private static BitmapShader empty;
 
     /** Crea el shader con un fondo vacío (1×1) ya enlazado; null si el sistema no lo admite. */
-    static RuntimeShader create() {
+    public static RuntimeShader create() {
         RuntimeShader rs = new RuntimeShader(AGSL);
         rs.setInputShader("wall", empty());
         rs.setFloatUniform("hasWall", 0f);
@@ -179,7 +179,7 @@ final class GlassShader {
      * Fondo para el shader con filtrado bilineal. Sin esto, dentro de un RuntimeShader la imagen
      * reducida se muestrea al píxel más cercano y el desenfoque se ve en cuadraditos.
      */
-    static BitmapShader linear(Bitmap b) {
+    public static BitmapShader linear(Bitmap b) {
         BitmapShader bs = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
         if (android.os.Build.VERSION.SDK_INT >= 33) bs.setFilterMode(BitmapShader.FILTER_MODE_LINEAR);
         return bs;
@@ -198,7 +198,7 @@ final class GlassShader {
      * resultado y un desenfoque de caja triple (≈ gaussiano) de {@code blurPx} píxeles de pantalla.
      * {@code screenPerSrc} = píxeles de pantalla que ocupa un píxel del original.
      */
-    static Bitmap shrinkBlur(Bitmap src, float screenPerSrc, float pxPerSample, float blurPx) {
+    public static Bitmap shrinkBlur(Bitmap src, float screenPerSrc, float pxPerSample, float blurPx) {
         if (src.getConfig() == Bitmap.Config.HARDWARE) src = src.copy(Bitmap.Config.ARGB_8888, false);
         if (src == null) return null;
         float f = screenPerSrc / pxPerSample;

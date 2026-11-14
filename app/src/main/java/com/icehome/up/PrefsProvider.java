@@ -67,6 +67,8 @@ public class PrefsProvider extends ContentProvider {
         if (!"tune".equals(uri.getLastPathSegment())) {
             throw new IllegalArgumentException("Unknown path: " + uri.getLastPathSegment());
         }
+        // Tras actualizar a la 1.1.0 (libxposed): importa los ajustes antiguos, en segundo plano.
+        Migrate.start(getContext());
         MatrixCursor c = new MatrixCursor(new String[]{"key", "value"});
         SharedPreferences p = getContext().getSharedPreferences(PREFS, 0);
         for (Map.Entry<String, ?> e : p.getAll().entrySet()) c.addRow(new Object[]{e.getKey(), String.valueOf(e.getValue())});

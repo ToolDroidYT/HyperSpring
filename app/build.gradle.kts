@@ -36,5 +36,7 @@ android {
 }
 
 dependencies {
-    compileOnly("de.robv.android.xposed:api:82")
+    // Las dos API de Xposed, solo para compilar: en el móvil las pone el framework.
+    compileOnly("de.robv.android.xposed:api:82")          // clásica, motor LegacyEngine
+    compileOnly("io.github.libxposed:api:102.0.0")        // libxposed, motor ModernEngine
 }

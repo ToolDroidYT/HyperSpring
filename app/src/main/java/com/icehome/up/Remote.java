@@ -10,9 +10,9 @@ import android.os.Build;
 import com.icehome.up.cc.CcGlass;
 import com.icehome.up.telon.SafeMode;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Órdenes de la app de ajustes, sin root: el launcher y la interfaz del sistema escuchan estas
@@ -25,6 +25,28 @@ final class Remote {
     static final String RESTART_LAUNCHER = "com.icehome.up.RESTART_LAUNCHER";
     static final String RESTART_SYSTEMUI = "com.icehome.up.RESTART_SYSTEMUI";
     static final String RESET_SAFE = "com.icehome.up.RESET_SAFE";
+
+    /**
+     * Desde la app: manda una orden al launcher y a la interfaz del sistema.
+     *
+     * <p>Va dirigida a cada paquete por su nombre y sin exigir permiso al que la recibe. Antes se
+     * mandaba con {@code sendBroadcast(i, PERMISSION)}, que obliga al receptor a TENER el permiso:
+     * la interfaz (usuario "system") lo tiene todo, pero el launcher no, y Android descartaba el
+     * aviso ("Permission Denial"): sus ajustes no se aplicaban hasta reiniciarlo. La protección
+     * que importa sigue en pie: los receptores se registran exigiendo que quien ENVÍA tenga el
+     * permiso de firma, y eso solo lo cumple esta app.
+     */
+    static void send(Context c, String action) {
+        for (String pkg : new String[]{"com.miui.home", "com.mi.android.globallauncher", "com.android.systemui"}) {
+            try {
+                Intent i = new Intent(action);
+                i.setPackage(pkg);
+                i.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+                c.sendBroadcast(i);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
 
     /** @param systemUi true en la interfaz del sistema, false en el launcher. */
     static void install(final boolean systemUi) {
@@ -124,7 +146,8 @@ final class Remote {
             String ver = Version.NAME;              // la del módulo cargado aquí, no la de este proceso
             android.content.ContentValues v = new android.content.ContentValues();
             v.put("key", key);
-            v.put("value", System.currentTimeMillis() + "|" + ver);
+            // hora | versión | API con la que se cargó (para la tarjeta de compatibilidad)
+            v.put("value", System.currentTimeMillis() + "|" + ver + "|" + MainHook.engineName());
             ctx.getContentResolver().insert(PrefsProvider.STATE, v);
         } catch (Throwable ignored) {
         }

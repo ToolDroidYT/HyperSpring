@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XC_MethodReplacement;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Pila de widgets estilo HyperOS 4 para el launcher de Kashi V7.5 (com.kx.home.WidgetStack$Layer).

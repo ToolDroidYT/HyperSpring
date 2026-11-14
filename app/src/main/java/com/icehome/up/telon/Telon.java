@@ -17,9 +17,9 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.icehome.up.xp.XC_MethodHook;
+import com.icehome.up.xp.XposedBridge;
+import com.icehome.up.xp.XposedHelpers;
 
 /**
  * Telón al cambiar de pantalla: en las transiciones del sistema (WMShell, en SystemUI) en las que
@@ -606,19 +606,20 @@ public final class Telon {
     }
 
     private static synchronized Handler renderHandler() {
-        if (renderThread == null) renderThread = start("Telon-render", Process.THREAD_PRIORITY_URGENT_DISPLAY);
+        if (renderThread == null) renderThread = start("HyperSpring-curtain", Process.THREAD_PRIORITY_URGENT_DISPLAY);
         return renderThread;
     }
 
     private static synchronized Handler captureHandler() {
-        if (captureThread == null) captureThread = start("Telon-capture", Process.THREAD_PRIORITY_DISPLAY);
+        if (captureThread == null) captureThread = start("HyperSpring-curtaincap", Process.THREAD_PRIORITY_DISPLAY);
         return captureThread;
     }
 
+    /** Hilos que pueden usar todas las CPU (ver com.icehome.up.Threads). */
     private static Handler start(String name, int prio) {
-        HandlerThread t = new HandlerThread(name, prio);
-        t.start();
-        return new Handler(t.getLooper());
+        Handler h = com.icehome.up.Threads.start(name, prio);
+        Log.i("hilo " + com.icehome.up.Threads.describe(h));
+        return h;
     }
 
     private static Field field(Class<?> c, String name) {

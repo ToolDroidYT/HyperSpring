@@ -8,7 +8,7 @@ import android.os.HandlerThread;
 import java.util.ArrayList;
 import java.util.List;
 
-import de.robv.android.xposed.XposedBridge;
+import com.icehome.up.xp.XposedBridge;
 
 /**
  * Registro en LSPosed y, desde el launcher, también en la app HyperSpring (para verlo y copiarlo

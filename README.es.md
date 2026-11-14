@@ -6,7 +6,7 @@
 
 <p align="center">
   Animaciones y cristal líquido para HyperOS · módulo LSPosed<br>
-  <b>v1.0.1</b> · <a href="README.md">English</a>
+  <b>v2.5.0-poco</b> · <a href="README.md">English</a>
 </p>
 
 ---
@@ -96,17 +96,14 @@ HyperSpring añade al launcher y a la interfaz del sistema de HyperOS animacione
 
 ## Instalación
 
-1. Instala el APK de [Releases](../../releases).
+1. Instala el APK de [Releases](../../releases): `HyperSpring.apk` en Vector y otros frameworks actuales (libxposed API 102), `HyperSpring-legacy.apk` en LSPosed antiguos.
 2. En LSPosed, activa **HyperSpring** y marca los ámbitos **Launcher del sistema** e **Interfaz del sistema**.
 3. Reinicia el móvil.
 4. Abre HyperSpring y concede root cuando lo pida (solo se usa para reiniciar el launcher y la interfaz).
 5. En **Acerca de → Compatibilidad**, cada parte debería aparecer como **Activo**.
 
-### Si vienes de Ice Home, Telón o KashiPlus
-HyperSpring reúne esos tres módulos en uno.
-- **Ice Home:** HyperSpring se instala encima y conserva sus ajustes, porque usa el mismo paquete (`com.icehome.up`).
-- **Telón y KashiPlus:** desinstálalos y quítalos de LSPosed. Mientras sigan instalados, HyperSpring no carga esa parte para no engancharse dos veces, y la app te avisa.
-- **Ámbitos:** al actualizar, LSPosed **no** marca solo el ámbito nuevo. Revisa que estén los dos.
+### Si vienes de Ice Home
+HyperSpring se instala encima y conserva sus ajustes, porque usa el mismo paquete (`com.icehome.up`). Al actualizar, LSPosed **no** marca solo el ámbito nuevo: revisa que estén los dos.
 
 ### Actualizar
 Instala la versión nueva encima y reinicia el launcher y la interfaz desde la pestaña **Inicio**, o reinicia el móvil. Si alguna parte sigue con la versión anterior, la app te avisa.
@@ -133,7 +130,7 @@ Si el móvil no arranca bien, desactiva el módulo en LSPosed. También puedes a
 ## Compilar
 
 - **Con Android SDK:** `./gradlew assembleRelease`.
-- **Sin SDK:** `TOOLS=/ruta bash local-build/build.sh`. Usa JDK 17, `android.jar` de la API 35, jadx (D8), apktool (aapt2) y uber-apk-signer. El APK sale en `local-build/out/HyperSpring.apk`.
+- **Sin SDK:** `TOOLS=/ruta bash local-build/build.sh`. Usa JDK 17, `android.jar` de la API 35, jadx (D8), apktool (aapt2) y uber-apk-signer. Los APK salen en `local-build/out/`: `HyperSpring.apk` (libxposed API 102) y `HyperSpring-legacy.apk` (API 93).
 - **Shaders:** antes de compilar se validan los AGSL (`agsl_check.py`, con skia-python). Los de OpenGL se comprueban con Mesa usando los scripts de `local-build/`.
 
 Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.up`.
@@ -150,7 +147,7 @@ Para conservar los ajustes al actualizar, el paquete sigue siendo `com.icehome.u
 
 ## Próximamente
 
-En camino: rebote elástico global, más estilos de recientes, efectos en el fondo de pantalla, ajustes que se aplican sin reiniciar (libxposed API 102), vista previa dentro de la app, perfiles predefinidos y más. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/olilio3/HyperSpring/issues).
+En camino: recarga en caliente con libxposed API 102, carpetas con muelle en el launcher de serie y soporte de POCO Launcher. La lista completa está en [`docs/ROADMAP.es.md`](docs/ROADMAP.es.md). Ideas y peticiones en [Issues](https://github.com/ToolDroidYT/HyperSpring/issues).
 
 ## Créditos
 

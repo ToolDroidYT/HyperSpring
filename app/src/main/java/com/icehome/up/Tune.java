@@ -23,7 +23,7 @@ final class Tune {
             {"icehome_folder_glass_on", "Cristal en las carpetas", 0f, 1f, 1f, -1, "El fondo de las carpetas abiertas es cristal desenfocado en vez de un color plano. Se aplica al reiniciar el launcher."},
             {"icehome_curtain_on", "Recientes que se doblan", 0f, 1f, 1f, -1, "En la vista de recientes, las tarjetas se doblan hacia el lado contrario según la fuerza con la que las deslizas. Se aplica al reiniciar el launcher."},
             {"#", "Abrir y cerrar apps"},
-            {"icehome_genie_style", "Estilo", 0f, 2f, 2f, 0, "0 = genio clásico con cola. 1 = copa como Samsung: arriba sube primero y luego baja el resto. 2 = Ice: copa más suave, con rebote al abrir, el icono que recibe la copa y el escritorio que se oscurece detrás."},
+            {"icehome_genie_style", "Estilo", 0f, 3f, 0f, 0, "0 = genio clásico con cola. 1 = copa como Samsung: arriba sube primero y luego baja el resto. 2 = Ice: copa más suave, con rebote al abrir, el icono que recibe la copa y el escritorio que se oscurece detrás. 3 = Profundidad: sin genio; la animación normal de HyperOS, pero la ventana es una hoja rígida que se inclina (arriba al fondo), más cuanto más fuerte cierras, y deja estela de movimiento. Intensidad regula la inclinación y la estela."},
             {"icehome_genie_strength", "Intensidad", 0f, 4f, 2.2f, 1, "Cuánto se deforma la ventana. 0 es un rectángulo normal; 1,8–2,2 se parece a Samsung."},
             {"icehome_genie_quality", "Resolución", 50f, 100f, 75f, 0, "Nitidez de la animación. Más alta se ve más nítida pero gasta más GPU; en móviles modestos, 50–60 %."},
             {"icehome_genie_physics", "Físicas al arrastrar", 0f, 2f, 1f, 1, "Al cerrar una app con el dedo, la ventana se balancea como una lámpara colgada. 0 la deja rígida."},
@@ -39,6 +39,12 @@ final class Tune {
             {"icehome_curtain_style", "Estilo telón", 0f, 1f, 0f, -1, "Activado: la parte de arriba queda fija y se dobla la de abajo, como un telón. Desactivado: se dobla el centro, como una cortina."},
             {"#", "Carpetas"},
             {"icehome_folder_blur", "Desenfoque", 0f, 30f, 6f, 0, "Cuánto se desenfoca lo que hay detrás de una carpeta abierta, en dp."},
+            {"icehome_folder_quality", "Calidad del cristal", 25f, 100f, 67f, 0, "Nitidez del fondo que ve el cristal, en %. Más alta se ve más fina pero usa más memoria; en móviles modestos, 50–67 %."},
+            {"icehome_folder_lens", "Grosor del borde", 0f, 40f, 22f, 0, "Ancho de la lente de cristal líquido junto al borde, en dp. 0 la quita y deja solo el canto fino."},
+            {"icehome_folder_refr", "Refracción", 0f, 60f, 30f, 0, "Cuánto dobla la lente el fondo hacia dentro, en dp. Más alto parece un cristal más grueso."},
+            {"icehome_folder_chroma", "Dispersión de color", 0f, 3f, 1.2f, 1, "Separación de colores tipo arcoíris en las esquinas, como en un prisma. 0 la quita."},
+            {"icehome_folder_light", "Brillo del borde", 0f, 0.3f, 0.1f, 2, "Luz que recoge el borde de la lente desde arriba a la izquierda."},
+            {"icehome_folder_glow", "Brillo al tocar", 0f, 1.5f, 1f, 2, "Al tocar una carpeta, una luz suave sigue al dedo y el canto se enciende cerca de él. 0 lo quita."},
     };
 
     private static volatile Map<String, String> cache;
@@ -59,6 +65,14 @@ final class Tune {
         GlRenderer.wantedScale = f(c, "icehome_genie_quality") / 100f;
         Springs.speed = f(c, "icehome_anim_speed");
         Springs.bounce = f(c, "icehome_anim_bounce");
+        GlassFolder.quality = f(c, "icehome_folder_quality");
+        GlassFolder.liquidH = f(c, "icehome_folder_lens");
+        GlassFolder.liquidAmt = f(c, "icehome_folder_refr");
+        GlassFolder.liquidChroma = f(c, "icehome_folder_chroma");
+        GlassFolder.liquidLight = f(c, "icehome_folder_light");
+        GlassFolder.touchGlow = f(c, "icehome_folder_glow");
+        Map<String, String> m = cache;
+        Exclude.genie = Exclude.parse(m == null ? null : m.get(Exclude.KEY));
     }
 
     /** Valor de un ajuste (de la memoria si ya se leyó; si no, del proveedor). */

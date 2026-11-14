@@ -1,11 +1,11 @@
 package com.icehome.up;
 
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import com.icehome.up.xp.XposedBridge;
 
 /**
- * Punto de entrada LSPosed de HyperSpring, que reúne lo que antes eran tres módulos:
+ * Arranque de HyperSpring en cada proceso enganchado. Lo llaman las dos entradas del módulo:
+ * {@link LegacyEntry} (API clásica de Xposed, 93) y {@link ModernEntry} (libxposed, API 102).
+ * Reúne lo que antes eran tres módulos:
  * <ul>
  * <li>com.miui.home: animaciones del escritorio (antes Ice Home).</li>
  * <li>com.android.systemui: telón al cambiar de pantalla (antes Telón) y cristal y apertura del
@@ -14,7 +14,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  * Si sigue instalado alguno de los módulos viejos, su parte no se carga aquí (dos ganchos sobre lo
  * mismo romperían la interfaz).
  */
-public class MainHook implements IXposedHookLoadPackage {
+public class MainHook {
 
     static final String OLD_TELON = "com.telon.fx", OLD_KASHIPLUS = "com.kashiplus.tweaks";
     /** En SystemUI: el centro de control lo lleva este módulo (sin KashiPlus viejo ni modo seguro). */
@@ -23,38 +23,58 @@ public class MainHook implements IXposedHookLoadPackage {
     /** Cargadores del plugin ya enganchados (el plugin puede recargarse con otro cargador). */
     private static final java.util.Map<ClassLoader, Boolean> ccDone = new java.util.WeakHashMap<>();
 
-    @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        if ("com.android.systemui".equals(lpparam.packageName)) {
-            systemUi(lpparam);
+    private static volatile boolean launcherDone;
+
+    /**
+     * Un paquete acaba de cargarse en este proceso.
+     *
+     * @param pkg         paquete cargado (launcher, SystemUI o su plugin)
+     * @param processName nombre del proceso; puede ser null
+     * @param cl          cargador de clases del paquete: con él se buscan las clases a enganchar
+     * @param dataDir     carpeta de datos del paquete (para el modo seguro del launcher)
+     */
+    static void onPackage(String pkg, String processName, ClassLoader cl, String dataDir) {
+        if ("com.android.systemui".equals(pkg) || "miui.systemui.plugin".equals(pkg)
+                || LauncherAdapters.forPackage(pkg) != null) {
+            // Aún no hay animaciones: el hilo semilla nace con todas las CPU (ver Threads).
+            try {
+                Threads.init();
+            } catch (Throwable t) {
+                XposedBridge.log(t);
+            }
+        }
+        if ("com.android.systemui".equals(pkg)) {
+            systemUi(processName, cl);
             return;
         }
-        if ("miui.systemui.plugin".equals(lpparam.packageName)) {
+        if ("miui.systemui.plugin".equals(pkg)) {
             // El plugin también se carga en procesos auxiliares (p. ej. :flashlight) sin SystemUI.
-            if (lpparam.processName == null || lpparam.processName.equals("com.android.systemui")) {
+            if (processName == null || processName.equals("com.android.systemui")) {
                 checkSystemUi();
-                installCc(lpparam.classLoader);
+                installCc(cl);
             }
             return;
         }
-        final LauncherAdapter adapter = LauncherAdapters.forPackage(lpparam.packageName);
+        final LauncherAdapter adapter = LauncherAdapters.forPackage(pkg);
         if (adapter == null) return;
-        if (lpparam.processName != null && !lpparam.processName.equals(adapter.packageName())) return;
-        XposedBridge.log("IceHome: " + adapter.displayName() + " enganchado");
-        ClassLoader cl = lpparam.classLoader;
+        if (processName != null && !processName.equals(adapter.packageName())) return;
+        if (launcherDone) return;                           // una sola vez por proceso
+        launcherDone = true;
+        XposedBridge.log("IceHome: " + adapter.displayName() + " enganchado, motor " + engineName());
         try {
             Remote.install(false);
         } catch (Throwable t) {
             XposedBridge.log(t);
         }
-        // Espera a Application.attach: el recovery check necesita consultar el historial de
-        // salidas de Android y consumir el marcador de reinicio intencional de la app.
+        // Modo seguro: si el launcher se está cayendo una y otra vez, arranca sin animaciones.
+        // El recovery check necesita además consultar el historial de salidas de Android y
+        // consumir el marcador de reinicio intencional de la app.
         final ClassLoader fcl = cl;
-        final String dataDir = lpparam.appInfo != null ? lpparam.appInfo.dataDir : null;
+        final String dir = dataDir;
         onAttach(new WithContext() {
             @Override
             public void run(android.content.Context c) {
-                if (!LauncherSafe.checkAtLoad(c, dataDir)) return;
+                if (!LauncherSafe.checkAtLoad(c, dir)) return;
                 // Los interruptores se leen con el contexto propio del launcher.
                 adapter.install(c, fcl);
             }
@@ -72,6 +92,7 @@ public class MainHook implements IXposedHookLoadPackage {
             try {
                 WindowAnim.install(cl);
                 Genie.enabled = true;
+                Genie.startThreads();
             } catch (Throwable t) {
                 Log.e("no se pudo instalar el genio (¿otra versión del launcher?)", t);
             }
@@ -117,7 +138,16 @@ public class MainHook implements IXposedHookLoadPackage {
                 XposedBridge.log(t);
             }
         }
+    }
+
+    /** Para el registro: con qué API se ha cargado el módulo aquí. */
+    static String engineName() {
+        try {
+            return XposedBridge.engine().name();
+        } catch (Throwable t) {
+            return "?";
         }
+    }
 
     private static String onOff(boolean on) {
         return on ? "sí" : "no";
@@ -129,8 +159,8 @@ public class MainHook implements IXposedHookLoadPackage {
 
     /** Ejecuta {@code w} una vez, justo después de Application.attach (ya hay contexto propio). */
     static void onAttach(final WithContext w) {
-        de.robv.android.xposed.XposedHelpers.findAndHookMethod(android.app.Application.class, "attach",
-                android.content.Context.class, new de.robv.android.xposed.XC_MethodHook() {
+        com.icehome.up.xp.XposedHelpers.findAndHookMethod(android.app.Application.class, "attach",
+                android.content.Context.class, new com.icehome.up.xp.XC_MethodHook() {
                     private boolean done;
 
                     @Override
@@ -176,11 +206,11 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private static volatile boolean sysuiDone;
 
-    private static void systemUi(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void systemUi(String processName, ClassLoader cl) {
         // Solo el proceso principal y una vez: LSPosed puede avisar de SystemUI también en otros
         // procesos suyos (sin nombre de proceso); ahí no hay WMShell y además contaba como otro
         // arranque para el modo seguro (que saltaba con dos reinicios en vez de tres).
-        String proc = lpparam.processName;
+        String proc = processName;
         if (proc == null) {
             try {
                 proc = android.app.Application.getProcessName();
@@ -190,8 +220,7 @@ public class MainHook implements IXposedHookLoadPackage {
         if (proc != null && !proc.equals("com.android.systemui")) return;
         if (sysuiDone) return;
         sysuiDone = true;
-        ClassLoader cl = lpparam.classLoader;
-        XposedBridge.log("IceHome: SystemUI enganchado");
+        XposedBridge.log("IceHome: SystemUI enganchado, motor " + engineName());
         try {
             Remote.install(true);
         } catch (Throwable t) {
@@ -241,7 +270,7 @@ public class MainHook implements IXposedHookLoadPackage {
      */
     private static void watchPluginLoader() {
         try {
-            XposedBridge.hookAllConstructors(dalvik.system.BaseDexClassLoader.class, new de.robv.android.xposed.XC_MethodHook() {
+            XposedBridge.hookAllConstructors(dalvik.system.BaseDexClassLoader.class, new com.icehome.up.xp.XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam p) {
                     Object path = p.args.length > 0 ? p.args[0] : null;

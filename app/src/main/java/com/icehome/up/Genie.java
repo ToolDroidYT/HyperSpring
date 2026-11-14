@@ -58,8 +58,19 @@ final class Genie {
     private static final float OPEN_FADE_S = 0.06f;
     /** Si el genio aparece con la ventana ya más grande que esto, no se cruza con el icono de MIUI. */
     private static final float EARLY_PW = 0.35f;
-    /** Tramo de anchura (0 = icono) en el que el genio es el icono y pasa a ser la app, o al revés. */
-    private static final float ICON_MIX_START = 0.2f, ICON_MIX_END = 0.03f;
+    /**
+     * Tramo de anchura (0 = icono, 1 = pantalla) en el que el genio pasa de icono a app, o al
+     * revés. Medido en la animación de serie de MIUI (HyperOS 3, a cámara lenta):
+     * <ul>
+     * <li>Al abrir, el icono desaparece enseguida: con la ventana a ~1,3 veces el icono ya solo
+     *     se ve el color de la app.</li>
+     * <li>Al cerrar, el icono toma el relevo pronto, con la ventana aún a ~2 veces el icono, y lo
+     *     que queda del viaje es el icono encogiendo. Con el relevo al final (como antes, de 0,2 a
+     *     0,03) la app oscura se mezclaba con el icono y se veía un cuadrado oscuro.</li>
+     * </ul>
+     */
+    private static final float OPEN_MIX_START = 0.12f, OPEN_MIX_END = 0.02f;
+    private static final float CLOSE_MIX_START = 0.3f, CLOSE_MIX_END = 0.13f;
     /** Lado del icono como textura (potencia de 2, con mipmaps). */
     private static final int ICON_TEXTURE = 128;
     /** Al interrumpir, la forma de abrir y la de cerrar se funden en este tiempo. */
@@ -68,8 +79,6 @@ final class Genie {
     private static final float ICON_BLEND_S = 0.12f;
     /** Ancho del "icono" virtual bajo el dedo, respecto a la pantalla. */
     private static final float FINGER_ANCHOR = 0.2f;
-    /** Tamaño del icono en el contenido provisional, respecto al ancho de la pantalla. */
-    private static final float SPLASH_ICON = 0.3f;
     /** Tras el fin de una animación, margen por si MIUI encadena otra con el mismo animador. */
     private static final long GRACE_MS = 40;
     /** Un animador solo releva al del genio si este lleva este tiempo sin fotogramas. */
@@ -99,6 +108,8 @@ final class Genie {
     private static final float SAME_ICON = 0.5f;
     /** Icono de MIUI y genio a la vez durante este tiempo al empezar (un refresco y algo). */
     private static final long OVERLAP_NS = 20_000_000L;
+    /** Al cerrar, con la ventana por encima de esta anchura (progreso) el icono flotante no se ve. */
+    private static final float CLOSE_ICON_HIDE_PW = 0.3f;
     /**
      * Altura del icono (fracción de la pantalla) entre la que la copa pasa de estrecharse hacia
      * abajo a estrecharse hacia arriba; en medio, mezcla (sin saltos si el icono cambia).
@@ -108,6 +119,8 @@ final class Genie {
     private static final float FLIP_S = 0.12f;
     /** Fundido de la pantalla provisional a la primera captura de la app. */
     private static final float CONTENT_FADE_S = 0.14f;
+    /** Del color de fondo provisional al de la app, cuando MIUI lo da. */
+    private static final float BG_BLEND_S = 0.1f;
     /** Por debajo de esta anchura (progreso) el genio ya ha llegado al icono: vibración. */
     private static final float LAND_PW = 0.03f;
     /** Un fotograma que tarda más que esto respecto al anterior cuenta como tirón en el registro. */
@@ -126,10 +139,10 @@ final class Genie {
     /**
      * Presupuesto de capturas (cada una ocupa al compositor 25-80 ms en un móvil modesto y es lo
      * que daba tirones): al abrir "en vivo", como mucho una cada {@link #OPEN_LIVE_MS}; al cerrar
-     * el contenido ya no cambia, basta la primera y un refresco cada {@link #CLOSE_REFRESH_MS}.
-     * Sin "en vivo", al abrir solo la primera (y otra si la ventana cambia de superficie).
+     * el contenido ya no cambia y basta con una (ver {@link Session#captureDue}).
+     * Sin "en vivo", al abrir solo las primeras (y otra si la ventana cambia de superficie).
      */
-    private static final long OPEN_LIVE_MS = 200, CLOSE_REFRESH_MS = 700;
+    private static final long OPEN_LIVE_MS = 200;
     /** Sin "en vivo", al abrir: la primera captura y otra a esta distancia (la app ya se ha pintado). */
     private static final long OPEN_SECOND_MS = 300;
     /**
@@ -157,9 +170,46 @@ final class Genie {
      * Los lados son rectas entre los dos extremos (un trapecio con hombros suaves), sin la cola
      * curva del genio clásico. Al cerrar es lo mismo al revés: abajo se mete en el icono antes.
      */
-    static volatile int style = 2;   // STYLE_ICE
-    /** Estilos: genio clásico con cola, copa como Samsung, copa «Ice» (la nuestra). */
-    static final int STYLE_CLASSIC = 0, STYLE_SAMSUNG = 1, STYLE_ICE = 2;
+    static volatile int style = 0;   // STYLE_CLASSIC (por defecto)
+    /** Estilos: genio clásico con cola, copa como Samsung, copa «Ice» (la nuestra) y Profundidad (sin genio). */
+    static final int STYLE_CLASSIC = 0, STYLE_SAMSUNG = 1, STYLE_ICE = 2, STYLE_DEPTH = 3;
+    /**
+     * Profundidad: sin genio. La ventana sigue el rectángulo de MIUI (su muelle de siempre), pero
+     * se comporta como una lámina con peso, vista en perspectiva:
+     * <ul>
+     * <li>Sigue la animación normal de HyperOS (el rectángulo de MIUI), sin cambiar su recorrido.</li>
+     * <li><b>Hoja que rota:</b> rígida, sin deformarse, siempre con arriba hacia el fondo
+     * y abajo hacia ti (hasta {@link #DEPTH_TILT}). Al salir de la app se dobla enseguida y
+     * más cuanto más fuerte es el gesto; nunca se sale de la pantalla. La lleva un muelle con peso, así que se
+     * inclina con retraso y se endereza al llegar. A pantalla completa es un rectángulo normal.</li>
+     * <li><b>Desenfoque de movimiento:</b> como una cámara con el obturador abierto
+     * {@link #DEPTH_SHUTTER_S}: cada punto se difumina en la dirección en la que va. Al crecer
+     * desde el icono los bordes se estiran hacia fuera, como un zoom.</li>
+     * <li>El escritorio se oscurece un poco detrás, para dar fondo.</li>
+     * </ul>
+     * «Intensidad» escala las dos cosas (2,2 = lo de aquí).
+     */
+    /**
+     * Inclinación máxima de la hoja (arriba al fondo): arriba se ve hasta un 20 % más pequeña y
+     * abajo un 33 % más grande (1/(1 ± 0,25)), si cabe en la pantalla. Con Intensidad 2,2.
+     * Con 0,3 apenas se notaba al salir: el ojo necesita que arriba mida ~⅔ de abajo.
+     */
+    private static final float DEPTH_TILT = 0.5f;
+    /** Al abrir, la hoja sale ya inclinada esto (muy sutil, un 5 %). */
+    private static final float DEPTH_TILT_START = 0.05f;
+    /**
+     * Muelle de la inclinación: periodo (s) y amortiguamiento. Algo de rebote (0,55): la hoja
+     * tiene peso, se inclina con retraso al empezar a moverse y se endereza pasándose un poco.
+     */
+    private static final float TILT_RESPONSE = 0.14f, TILT_DAMPING = 0.6f; // el cierre dura ~0,25 s: con 0,2 no llegaba a doblarse
+    /** Velocidad (en alturas de pantalla por segundo) a la que la curvatura llega a su máximo. */
+    private static final float DEPTH_SPEED = 2.2f;
+    /** Obturador del desenfoque, en segundos (~3/4 de un fotograma a 60 Hz). */
+    private static final float DEPTH_SHUTTER_S = 0.0125f;
+    /** Estela máxima, en fracción de la altura de pantalla: con tirones no se emborrona de más. */
+    private static final float DEPTH_MAX_BLUR = 0.09f;
+    /** Profundidad: oscurecido del escritorio, muy suave (el desenfoque del fondo ya lo pone HyperOS). */
+    private static final float DEPTH_DIM = 0.06f;
     /**
      * Ice: copa algo más suave que la de Samsung (arriba se adelanta un poco menos, abajo se
      * estrecha menos y el contenido se lee siempre), el escritorio se oscurece detrás
@@ -193,6 +243,13 @@ final class Genie {
     static volatile float maxFps = 60f;
     /** Margen al comparar con el periodo (los refrescos no llegan exactos). */
     private static final long PACE_SLACK_NS = 2_500_000L;
+    /**
+     * Predicción entre muestras de MIUI: como mucho este número de refrescos por delante de la
+     * última (cubre los huecos medidos, de 1-3 refrescos, sin inventar si MIUI se para de verdad).
+     */
+    private static final float MAX_AHEAD_PERIODS = 2f;
+    /** Sin muestras de MIUI durante estos refrescos, el bucle de dibujo se para hasta la siguiente. */
+    private static final int KEEP_TICKING_PERIODS = 4;
 
     private static long periodNs() {
         return (long) (1e9 / Math.max(15f, maxFps)) - PACE_SLACK_NS;
@@ -499,6 +556,13 @@ final class Genie {
     static float floatingIconAlpha() {
         Session s = session;
         if (s == null) return 1f;
+        // Al cerrar, MIUI dibuja su icono flotante (con un velo del color del icono) a la medida
+        // de su rectángulo y por debajo de la ventana: de serie, la ventana lo tapa entero. Con
+        // genio la ventana se oculta y la copa es más estrecha abajo, y el velo asomaba alrededor
+        // como un marco claro. Aquí sobra (el genio ya dibuja el icono al final): fuera en cuanto
+        // se ve el genio, o mientras la ventana aún es grande y lo tapa. Si el genio no llega a
+        // verse, MIUI lo enseña como siempre.
+        if (!s.open && (s.shown || s.pwNow > CLOSE_ICON_HIDE_PW)) return 0f;
         // El genio ya es el icono. El de MIUI (encima del genio) se quita un refresco después de
         // que se vea el genio: van en transacciones distintas y nunca debe haber un fotograma vacío.
         if (s.iconReady) return s.shown && SystemClock.elapsedRealtimeNanos() - s.shownNs > OVERLAP_NS ? 0f : 1f;
@@ -628,13 +692,46 @@ final class Genie {
 
     /** Oscurecido del escritorio detrás de la copa (solo Ice): va con lo abierta que está. */
     private static float dimFor(float pw) {
-        return style == STYLE_ICE ? ICE_DIM * Math.max(0f, Math.min(1f, pw)) : 0f;
+        float k = style == STYLE_ICE ? ICE_DIM : style == STYLE_DEPTH ? DEPTH_DIM : 0f;
+        return k * Math.max(0f, Math.min(1f, pw));
     }
 
     /** La sesión de este animador vuelve a un icono y aún no sabe cuál es su vista. */
     static boolean needsTarget(Object key) {
         Session s = session;
         return s != null && s.key == key && s.targetView == null;
+    }
+
+    /** La sesión de este animador aún no tiene el color de la app (MIUI lo da unos fotogramas tarde). */
+    static boolean needsShade(Object key) {
+        Session s = session;
+        return s != null && s.key == key && !s.bgKnown;
+    }
+
+    /**
+     * Color de fondo mientras MIUI no da el de la app: el de las ventanas de inicio del sistema,
+     * negro en modo oscuro y blanco en claro. Antes era siempre blanco, y en modo oscuro se veía
+     * un destello blanco que MIUI de serie no tiene.
+     */
+    private static int provisionalBg() {
+        android.content.Context c = TapCatcher.context;
+        try {
+            if (c != null && (c.getResources().getConfiguration().uiMode
+                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+                return 0xFF000000;
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0xFFFFFFFF;
+    }
+
+    /** Mezcla de dos colores opacos (t = 0 → a, 1 → b). */
+    private static int mixColor(int a, int b, float t) {
+        int r = Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, t));
+        int g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t));
+        int bl = Math.round(lerp(a & 255, b & 255, t));
+        return 0xFF000000 | (r << 16) | (g << 8) | bl;
     }
 
     /** La sesión de este animador aún no tiene el icono (al cerrar se conoce al soltar el dedo). */
@@ -699,8 +796,18 @@ final class Genie {
         if (s != null) s.compensate(t, m);
     }
 
+    /**
+     * Prioridad del hilo de dibujo (nice de Linux; menos es más prioridad). Al abrir una app las 8
+     * CPU están al 100 % y la app que arranca lleva sus hilos de inicio a −12: con −8
+     * (URGENT_DISPLAY) el genio esperaba hasta 30 ms por fotograma a que le dejaran una CPU. Con
+     * −16 gana esas esperas; trabaja ~5 ms por fotograma y se duerme hasta el siguiente refresco,
+     * así que no le quita tiempo apreciable a nadie. Una app puede pedirla sin permisos especiales
+     * (el audio usa −19).
+     */
+    private static final int RENDER_PRIORITY = -16;
+
     private static synchronized Handler renderHandler() {
-        if (renderThread == null) renderThread = start("IceHome-genie", Process.THREAD_PRIORITY_URGENT_DISPLAY);
+        if (renderThread == null) renderThread = start("IceHome-genie", RENDER_PRIORITY);
         return renderThread;
     }
 
@@ -709,10 +816,16 @@ final class Genie {
         return captureThread;
     }
 
+    /** Crea los dos hilos ya, al instalar (sin animación en marcha); ver {@link Threads}. */
+    static void startThreads() {
+        renderHandler();
+        captureHandler();
+    }
+
     private static Handler start(String name, int priority) {
-        HandlerThread t = new HandlerThread(name, priority);
-        t.start();
-        return new Handler(t.getLooper());
+        Handler h = Threads.start(name, priority);
+        Log.i("hilo " + Threads.describe(h));
+        return h;
     }
 
     // ------------------------------------------------------------------ sesión
@@ -725,7 +838,14 @@ final class Genie {
         final boolean startedOpen;
         final SurfaceControl root;
         final RectF full;
-        final int bg;
+        /**
+         * Color de la app bajo el contenido (el velo de MIUI). MIUI lo conoce unos fotogramas
+         * después de empezar a abrir (ver WindowAnim): hasta entonces vale uno provisional según
+         * el modo oscuro, y al llegar el bueno se pasa a él en {@link #BG_BLEND_S}.
+         */
+        private volatile int bgFrom, bgTo;
+        private volatile long bgNs;
+        volatile boolean bgKnown;
         volatile Drawable iconDrawable;
         /** El icono ya está en la GPU: el genio sale de él y vuelve a él. */
         volatile boolean iconReady, iconFailed;
@@ -768,16 +888,80 @@ final class Genie {
         private float pendingBend, pendingLift, pendingFlip;
         private float flipNow;
         private long flipNs;
-        // Velocidad de los bordes del rectángulo de MIUI (px/s), para que el genio suelto siga igual.
+        // Velocidad de los bordes del rectángulo de MIUI (px/s): para que el genio suelto siga
+        // igual y para predecir el rectángulo entre dos fotogramas de MIUI (ver predict).
         private final float[] edgeVel = new float[4];
+        /**
+         * Profundidad: velocidad de cada borde tal como se ve en pantalla (px/s), medida entre dos
+         * dibujos nuestros, no entre fotogramas de MIUI. MIUI manda fotogramas a trompicones; con
+         * su velocidad la estela se apagaba de golpe en un hueco y se quedaba puesta al final. Con
+         * la de los dibujos, si la ventana no se mueve en pantalla, no hay estela: es lo que haría
+         * una cámara.
+         */
+        private final float[] velNow = new float[4];
+        private final RectF prevDraw = new RectF();
+        private long prevDrawNs;
+
+        private void drawVelocity(RectF cur) {
+            long now = System.nanoTime();
+            float dt = (now - prevDrawNs) / 1e9f;
+            if (prevDrawNs == 0 || dt > 0.1f) {
+                java.util.Arrays.fill(velNow, 0f);        // primer dibujo o tras una pausa larga
+            } else if (dt > 0.004f) {
+                // Suavizado ligero (60 %): sigue los cambios sin temblar con un fotograma irregular.
+                velNow[0] = lerp(velNow[0], (cur.left - prevDraw.left) / dt, 0.6f);
+                velNow[1] = lerp(velNow[1], (cur.top - prevDraw.top) / dt, 0.6f);
+                velNow[2] = lerp(velNow[2], (cur.right - prevDraw.right) / dt, 0.6f);
+                velNow[3] = lerp(velNow[3], (cur.bottom - prevDraw.bottom) / dt, 0.6f);
+            }
+            prevDraw.set(cur);
+            prevDrawNs = now;
+        }
+        // Profundidad: inclinación de la hoja (y su velocidad) que lleva el muelle, en el hilo de dibujo.
+        private float tiltNow, tiltSpeed;
+        private long tiltNs;
+
+        /**
+         * Muelle de la hoja: la inclinación persigue la que pide la velocidad ({@code tiltTarget})
+         * con peso, en pasos de 4 ms (estable aunque un fotograma llegue tarde). Al abrir parte
+         * ya un poco inclinada; al cerrar, recta. Sigue redibujando hasta quedarse quieta.
+         */
+        void tiltSpring(GlRenderer.Geo g) {
+            long now = System.nanoTime();
+            if (tiltNs == 0) {
+                tiltNow = startedOpen ? g.tiltStart : 0f;
+                tiltSpeed = 0f;
+            } else {
+                float dt = Math.min(0.05f, (now - tiltNs) / 1e9f);
+                float w = (float) (2 * Math.PI / TILT_RESPONSE);
+                float k = w * w, c = 2f * TILT_DAMPING * w;
+                while (dt > 0f) {
+                    float step = Math.min(dt, 0.004f);
+                    tiltSpeed += (k * (g.tiltTarget - tiltNow) - c * tiltSpeed) * step;
+                    tiltNow += tiltSpeed * step;
+                    dt -= step;
+                }
+            }
+            tiltNs = now;
+            applyTilt(g, tiltNow);
+            if (Math.abs(tiltNow - g.tiltTarget) > 0.002f || Math.abs(tiltSpeed) > 0.02f) dirty = true;
+        }
+
         private final RectF prevCur = new RectF();
         private long prevCurNs;
+        /** Cuándo llegó la última muestra de MIUI (System.nanoTime, bajo lock). */
+        private long sampleNs;
+        /** Hacia dónde va cada borde: el icono al cerrar, la pantalla al abrir (bajo lock). */
+        private final RectF pendingGoal = new RectF();
+        private boolean pendingHasGoal;
 
         // Capturas ("IceHome-capture"); la última espera en GlRenderer hasta el siguiente dibujo.
         private volatile long lastCaptureMs, lastCaptureCostMs;
         private final ArrayList<SurfaceControl> excludeList = new ArrayList<>();
         private SurfaceControl[] exclude;
         private int captures, failed;
+        /** La última captura al cerrar fue la primera, a baja resolución: toca otra buena. */
+        private volatile boolean lowResShot;
         private long captureNs;
         private boolean layerExcluded;
         private volatile boolean preloaded, iconPreloaded, contentPreloaded;
@@ -801,13 +985,15 @@ final class Genie {
         final Runnable renderTask = new Runnable() {
             @Override
             public void run() {
-                render();
+                renderQueued.set(false);
+                render(System.nanoTime());
             }
         };
 
         /**
          * Hay algo nuevo que dibujar. El primer fotograma, ya; los siguientes, en el próximo
-         * refresco de la pantalla que respete {@link #maxFps}, con lo último que haya.
+         * refresco de la pantalla que respete {@link #maxFps}. Si el bucle de refrescos ya está
+         * en marcha (ver {@link #pacer}), basta con marcarlo: lo recoge el siguiente refresco.
          */
         void requestRender() {
             dirty = true;
@@ -825,19 +1011,33 @@ final class Genie {
             }
         };
 
+        /**
+         * Bucle de refrescos del hilo de dibujo. MIUI calcula su muelle en el hilo principal del
+         * launcher, que al abrir una app va justo (fotogramas de 15-20 ms y huecos de 25-60 ms):
+         * si el genio solo dibujase cuando llega un fotograma de MIUI, cada hueco sería un tirón.
+         * Así que, mientras MIUI siga animando, el genio dibuja en cada refresco de la pantalla y
+         * rellena los huecos prediciendo el rectángulo ({@link #predict}).
+         */
         private final android.view.Choreographer.FrameCallback pacer = new android.view.Choreographer.FrameCallback() {
             @Override
             public void doFrame(long frameTimeNanos) {
+                android.view.Choreographer ch = android.view.Choreographer.getInstance();
                 if (finishing) {
                     renderQueued.set(false);
                     return;
                 }
                 if (lastPacedNs != 0 && frameTimeNanos - lastPacedNs < periodNs()) {
-                    android.view.Choreographer.getInstance().postFrameCallback(this);   // aún no toca
+                    ch.postFrameCallback(this);                  // aún no toca (límite de fps)
                     return;
                 }
                 lastPacedNs = frameTimeNanos;
-                render();
+                if (render(frameTimeNanos) && !finishing) {
+                    ch.postFrameCallback(this);                  // sigue en el próximo refresco
+                    return;
+                }
+                renderQueued.set(false);
+                // Llegó una muestra justo mientras se decidía parar: que no se pierda.
+                if (dirty && !finishing && renderQueued.compareAndSet(false, true)) ch.postFrameCallback(this);
             }
         };
         final Runnable captureTask = new Runnable() {
@@ -865,9 +1065,27 @@ final class Genie {
             dirTo = dirFrom = dirNow = f.open ? 0f : 1f;
             root = f.root;
             full = new RectF(f.full);
-            bg = (f.bg >>> 24) == 0 ? 0xFFFFFFFF : f.bg | 0xFF000000;
+            if (f.open) {
+                bgKnown = (f.bg >>> 24) != 0;
+                bgFrom = bgTo = bgKnown ? f.bg | 0xFF000000 : provisionalBg();
+            } else {
+                // Al cerrar, MIUI solo encoge la ventana: nada debajo. Con el velo (claro en muchas
+                // apps) asomaba un borde blanco por las esquinas y la barra de gestos de la captura.
+                bgKnown = true;
+                bgFrom = bgTo = 0;
+            }
             iconDrawable = f.iconDrawable;
             if (f.exclude != null) Collections.addAll(excludeList, f.exclude);
+        }
+
+        /** Color de fondo de este fotograma (fundido del provisional al de MIUI). */
+        int bgNow() {
+            long ns = bgNs;
+            if (ns == 0) return bgTo;
+            float t = smooth((System.nanoTime() - ns) / 1e9f / BG_BLEND_S);
+            if (t >= 1f) return bgTo;
+            dirty = true;                                      // seguir dibujando hasta acabar
+            return mixColor(bgFrom, bgTo, t);
         }
 
         /** Puede seguir sola hasta el icono: ya se ve, con su captura, y sabe a qué icono va. */
@@ -925,6 +1143,14 @@ final class Genie {
                 if (leashMs == 0) leashMs = lastFrameMs;
             }
             if (f.iconDrawable != null && iconDrawable == null) iconDrawable = f.iconDrawable;
+            if (!bgKnown && (f.bg >>> 24) != 0) {
+                // Llega el color de la ventana de inicio de la app: del provisional a él, sin saltos.
+                bgFrom = bgNow();
+                bgTo = f.bg | 0xFF000000;
+                bgNs = System.nanoTime();
+                bgKnown = true;
+                dirty = true;
+            }
             if (f.targetView != null) targetView = new java.lang.ref.WeakReference<>(f.targetView);
             if (taskId == -1 && f.taskId != -1) taskId = f.taskId;
             long nowNs = SystemClock.elapsedRealtimeNanos();
@@ -974,11 +1200,16 @@ final class Genie {
                 }
                 prevCur.set(f.cur);
                 prevCurNs = nowNs;
+                sampleNs = System.nanoTime();               // mismo reloj que los refrescos
                 pendingCur.set(f.cur);
                 pendingIcon.set(iconNow);
                 pendingRadius = f.radius;
                 pendingDir = dirNow;
                 pendingFlip = flipNow;
+                // Destino de la predicción: nunca se adelanta más allá de él.
+                pendingHasGoal = open || f.hasIcon;
+                if (open) pendingGoal.set(full);
+                else if (f.hasIcon) pendingGoal.set(f.icon);
                 if (f.hasIcon) tapRect.set(f.icon);
                 else tapRect.setEmpty();
                 // Volviendo al icono: se puede tocar para reabrir la app.
@@ -1089,7 +1320,8 @@ final class Genie {
                 preloaded = true;                                 // tomada al empezar el gesto
             } else {
                 float scale = Math.min(CAPTURE_MAX_SCALE, GlRenderer.scale);
-                if (captures == 0 && !startedOpen) scale = Math.min(FIRST_CLOSE_SCALE, scale);
+                lowResShot = captures == 0 && !startedOpen && FIRST_CLOSE_SCALE < scale;
+                if (lowResShot) scale = FIRST_CLOSE_SCALE;
                 shot = Hidden.capture(window, c, scale, exclusions());
                 long cost = System.nanoTime() - t0;
                 captureNs += cost;
@@ -1113,9 +1345,14 @@ final class Genie {
             // Con el dedo en el escritorio (otra app, deslizar…), el compositor para el escritorio:
             // el contenido de la que se cierra ya no cambia.
             if (!open && TapCatcher.fingerDown()) return false;
+            // Al cerrar, el contenido ya no cambia y cada captura frena a SurfaceFlinger 25-40 ms
+            // (un tirón de toda la pantalla): solo se repite si la primera salió a baja resolución,
+            // y entonces cuanto antes, mientras la ventana aún es grande. Antes se refrescaba cada
+            // 700 ms, cuando la ventana ya casi era el icono y el refresco solo daba un tirón.
+            if (!open && !lowResShot) return false;
             long budget = open ? (live ? (captures < OPEN_EARLY_SHOTS ? OPEN_EARLY_MS : OPEN_LIVE_MS)
                     : (captures < OPEN_EARLY_SHOTS ? OPEN_EARLY_MS : Long.MAX_VALUE))
-                    : CLOSE_REFRESH_MS;
+                    : 0;
             if (budget == Long.MAX_VALUE) return false;
             long gap = Math.max(budget, (long) (lastCaptureCostMs * CAPTURE_IDLE));
             return SystemClock.uptimeMillis() - lastCaptureMs >= gap;
@@ -1136,34 +1373,41 @@ final class Genie {
 
         // ---------------------------------------------------------- hilo de dibujo
 
-        void render() {
-            renderQueued.set(false);
-            if (!dirty && posted > 0) return;
-            dirty = false;
-            if (finishing) return;
-            SurfaceControl w = leash;
-            if (w != null && !w.isValid()) {                   // el sistema canceló la transición
-                stop("la ventana ya no existe");
-                return;
-            }
-            Handler h = renderHandler();
-            h.removeCallbacks(watchdog);
-            // Con el dedo quieto MIUI no manda fotogramas: no es el final.
-            h.postDelayed(watchdog, following ? HOLD_MS : WATCHDOG_MS);
+        /**
+         * Dibuja el fotograma del refresco {@code frameNs} (System.nanoTime). Devuelve si el bucle
+         * de refrescos debe seguir: sí mientras MIUI siga mandando muestras.
+         */
+        boolean render(long frameNs) {
+            if (finishing) return false;
             float radius, dir, bend, lift, flip;
+            boolean moved, fresh;
             synchronized (lock) {
+                // MIUI lleva un rato sin muestras: ha acabado o el dedo está quieto. Se para el
+                // bucle (la próxima muestra lo vuelve a poner en marcha).
+                fresh = frameNs - sampleNs < KEEP_TICKING_PERIODS * periodNs();
+                moved = predict(frameNs, cur);
                 flip = pendingFlip;
-                cur.set(pendingCur);
                 icon.set(pendingIcon);
                 radius = pendingRadius;
                 dir = pendingDir;
                 bend = pendingBend;
                 lift = pendingLift;
             }
+            if (!dirty && !moved && posted > 0) return fresh;  // nada nuevo que enseñar
+            dirty = false;
+            SurfaceControl w = leash;
+            if (w != null && !w.isValid()) {                   // el sistema canceló la transición
+                stop("la ventana ya no existe");
+                return false;
+            }
+            Handler h = renderHandler();
+            h.removeCallbacks(watchdog);
+            // Con el dedo quieto MIUI no manda fotogramas: no es el final.
+            h.postDelayed(watchdog, following ? HOLD_MS : WATCHDOG_MS);
             if (!started && !begin()) {
                 finishing = true;
                 fail();
-                return;
+                return false;
             }
             boolean hadWindow = fromWindow;
             if (GlRenderer.consume() == this) fromWindow = true;
@@ -1186,7 +1430,7 @@ final class Genie {
             if (!fromWindow) {
                 if (!startedOpen) {                           // al cerrar, sin captura aún no hay nada
                     if (leash != null && captureQueued.compareAndSet(false, true)) captureHandler().post(captureTask);
-                    return;
+                    return fresh;
                 }
             }
 
@@ -1210,9 +1454,13 @@ final class Genie {
                     uploadIcon();
                 }
             }
-            shape(cur, icon, full, dir, ramp, lift, radius, bend, flip, iconReady, geoNow);
+            if (style == STYLE_DEPTH) drawVelocity(cur);
+            shape(cur, icon, full, dir, ramp, lift, radius, bend, flip, iconReady, velNow, geoNow);
+            if (style == STYLE_DEPTH) tiltSpring(geoNow);
             geoNow.fade = windowSinceNs == 0 ? 1f : smooth((System.nanoTime() - windowSinceNs) / 1e9f / CONTENT_FADE_S);
             if (geoNow.fade < 1f) dirty = true;                  // seguir dibujando hasta acabar el fundido
+            // Con estela, otro fotograma: así se apaga sola aunque MIUI deje de mandar fotogramas.
+            if (geoNow.vel[0] != 0f || geoNow.vel[1] != 0f || geoNow.vel[2] != 0f || geoNow.vel[3] != 0f) dirty = true;
             long t0 = System.nanoTime();
             if (lastDrawNs != 0) {
                 long gap = t0 - lastDrawNs;
@@ -1227,7 +1475,7 @@ final class Genie {
             if (!ok) {
                 finishing = true;
                 fail();
-                return;
+                return false;
             }
             drawNs += System.nanoTime() - t0;
             if (posted == 0) {
@@ -1243,11 +1491,39 @@ final class Genie {
                 ownTx.setVisibility(layer, true);
                 ownTx.apply();
             }
+            return fresh;
+        }
+
+        /**
+         * Rectángulo de MIUI previsto para el refresco {@code frameNs}, a partir de la última
+         * muestra y la velocidad de cada borde (bajo lock). Solo rellena huecos: se adelanta como
+         * mucho {@link #MAX_AHEAD_PERIODS} refrescos (uno con el dedo, que puede pararse en seco) y
+         * ningún borde pasa de su destino (el icono al cerrar, la pantalla al abrir). Devuelve si
+         * el resultado difiere de la muestra (hay algo nuevo que dibujar).
+         */
+        private boolean predict(long frameNs, RectF out) {
+            out.set(pendingCur);
+            float ahead = (frameNs - sampleNs) / 1e9f;
+            float max = (following ? 1f : MAX_AHEAD_PERIODS) / Math.max(15f, maxFps);
+            if (ahead <= 0f || sampleNs == 0) return false;
+            ahead = Math.min(ahead, max);
+            out.left = towards(pendingCur.left, out.left + edgeVel[0] * ahead, pendingGoal.left);
+            out.top = towards(pendingCur.top, out.top + edgeVel[1] * ahead, pendingGoal.top);
+            out.right = towards(pendingCur.right, out.right + edgeVel[2] * ahead, pendingGoal.right);
+            out.bottom = towards(pendingCur.bottom, out.bottom + edgeVel[3] * ahead, pendingGoal.bottom);
+            return Math.abs(out.left - pendingCur.left) + Math.abs(out.top - pendingCur.top)
+                    + Math.abs(out.right - pendingCur.right) + Math.abs(out.bottom - pendingCur.bottom) > 0.5f;
+        }
+
+        /** Un borde previsto que no cruza su destino (si lo hay): se queda en él. */
+        private float towards(float from, float to, float goal) {
+            if (!pendingHasGoal) return to;
+            return (from - goal) * (to - goal) < 0f ? goal : to;
         }
 
         /** Este genio en el fotograma en curso (hilo de dibujo). */
         boolean redraw() {
-            return GlRenderer.drawGenie(GlRenderer.main(), fromWindow, geoNow, full.width() * 0.5f, full.height(), bg);
+            return GlRenderer.drawGenie(GlRenderer.main(), fromWindow, geoNow, full.width() * 0.5f, full.height(), bgNow());
         }
 
         /** Ya hay una imagen nuestra en pantalla: un dibujo hecho y un refresco después. */
@@ -1380,7 +1656,7 @@ final class Genie {
                 b = pendingBend;
             }
             java.lang.ref.WeakReference<View> v = targetView;
-            ghost = new Ghost(c, full, raw, goal, vel, r, b, bg, iconReady, leash, v);
+            ghost = new Ghost(c, full, raw, goal, vel, r, b, bgNow(), iconReady, leash, v);
             Ghost.schedule();
             final View iconView = v == null ? null : v.get();
             final Icons ic = icons;
@@ -1402,15 +1678,98 @@ final class Genie {
     }
 
     /**
+     * Estilo Profundidad (ver {@link #STYLE_DEPTH}): el rectángulo de MIUI tal cual (su
+     * animación normal), con desenfoque según la velocidad de cada borde ({@code vel}, px/s, ya
+     * suavizada) y la inclinación que pide su velocidad ({@link GlRenderer.Geo#tiltTarget}). La
+     * inclinación de verdad la lleva un muelle en la sesión ({@link Session#tiltSpring}); aquí
+     * se pone ya la pedida, para quien dibuje sin muelle (el genio que vuelve solo).
+     */
+    private static void depth(RectF cur, RectF icon, RectF full, float dir, float ramp, float radius,
+                              boolean iconReady, float[] vel, float pw, GlRenderer.Geo out) {
+        out.cur.set(cur);
+        out.icon.set(icon);
+        out.pw = pw;
+        out.lead = out.lag = 1f;
+        out.cup = 2f;
+        out.radius = radius;
+        // Como en HyperOS: al salir, el icono crece y se funde con la app; al volver, al revés.
+        out.iconMix = iconMix(pw, dir, iconReady);
+        out.splashIcon = 0f;
+        out.bend = 0f;
+        out.flip = 0f;
+        out.tiltTarget = out.tiltStart = 0f;
+        out.tiltEnv = 1f;
+        if (vel == null) return;
+        float amt = strength / 2.2f * ramp;
+        // Muy cerca del icono la estela se apaga: aterriza nítido, sin «manchar» el icono. Y al
+        // abrir, en el último tramo (el muelle llegando a pantalla completa), también: la app
+        // queda nítida justo cuando la ventana de verdad la sustituye.
+        float env = smooth((pw - 0.04f) / 0.16f) * lerp(smooth((1f - pw) / 0.07f), 1f, dir);
+        float h = Math.max(1f, full.height());
+        float maxBlur = DEPTH_MAX_BLUR * h;
+        float sum = 0f, most = 0f;
+        for (int i = 0; i < 4; i++) {
+            float v = vel[i] * DEPTH_SHUTTER_S * amt * env;
+            out.vel[i] = Math.max(-maxBlur, Math.min(maxBlur, v));
+            most = Math.max(most, Math.abs(out.vel[i]));
+            sum += Math.abs(vel[i]);
+        }
+        // Menos de medio píxel de estela no se ve: a cero, y así se deja de redibujar.
+        if (most < 0.5f) java.util.Arrays.fill(out.vel, 0f);
+        // La hoja: rígida, solo rota sobre su centro (sin curvarse), y siempre hacia el mismo lado:
+        // arriba hacia el fondo y abajo hacia ti, esté donde esté el icono (como en el vídeo de
+        // HyperOS 4: al salir de la app, arriba se ve más estrecha que abajo).
+        float speed = smooth(sum * 0.25f / h / DEPTH_SPEED);
+        // Al salir se dobla enseguida: en cuanto deja la pantalla completa (away sube a tope en
+        // el primer 12 % del recorrido), sin esperar a coger velocidad; un gesto fuerte la
+        // dobla más (speed). Al abrir, solo con la velocidad: se va enderezando al frenar.
+        float away = smooth((1f - pw) / 0.12f) * 0.85f;
+        out.tiltTarget = DEPTH_TILT * amt * lerp(speed, Math.max(speed, away), dir);
+        // Al abrir sale ya un poco inclinada (muy sutil): el muelle empieza ahí.
+        out.tiltStart = DEPTH_TILT_START * amt;
+        // Pegada al icono, plana (al cerrar); a pantalla completa, plana (al abrir).
+        out.tiltEnv = lerp(1f, smooth((pw - 0.04f) / 0.16f), dir) * lerp(smooth((1f - pw) / 0.05f), 1f, dir);
+        // Hueco: el borde de abajo, que se acerca, nunca más grande que la pantalla. Al girar
+        // sobre el centro, abajo se ve 1/(1 − k/2) de grande; cabe si k ≤ 2·(1 − tamaño/pantalla).
+        // Así, a pantalla completa es plana y se puede doblar más cuanto más pequeña es.
+        float fill = Math.max(cur.width() / Math.max(1f, full.width()), cur.height() / h);
+        out.tiltRoom = Math.max(0f, 2f * (1f - fill));
+        applyTilt(out, out.tiltTarget);
+    }
+
+    /**
+     * Pone la hoja inclinada {@code a}: cuánto más lejos está arriba que abajo, en fracción de la
+     * distancia a la cámara (+ = arriba al fondo), sin pasar del hueco ({@code tiltRoom}).
+     * Rotación rígida sobre el centro: z = inclinación·y0, lineal (ver GlRenderer.PERSP); el
+     * centro se queda a la distancia del rectángulo de MIUI, arriba se aleja y abajo se acerca.
+     * Sin empuje: si la ventana entera se alejara al inclinarse, se vería encoger y volver a
+     * crecer (un zoom raro).
+     */
+    private static void applyTilt(GlRenderer.Geo g, float a) {
+        float hh = Math.max(1f, g.cur.height() * 0.5f);
+        float k = Math.max(-g.tiltRoom, Math.min(g.tiltRoom, a * g.tiltEnv));
+        g.tilt = -k / (2f * hh);                            // y0 < 0 es arriba: allí z = +k/2
+        g.curl = 0f;
+        g.push = 0f;
+    }
+
+    /**
      * Forma del genio a partir del rectángulo de MIUI ({@code cur}, se modifica): extremo lejano
      * adelantado y cercano retrasado, en horizontal (shader) y en vertical (aquí, como
      * desplazamiento sobre el rectángulo: con fuerza 0 es el de MIUI), más la lámpara.
      */
     private static void shape(RectF cur, RectF icon, RectF full, float dir, float ramp, float lift,
-                              float radius, float bend, float flip, boolean iconReady, GlRenderer.Geo out) {
+                              float radius, float bend, float flip, boolean iconReady, float[] vel, GlRenderer.Geo out) {
         float pw = progress(cur.width(), icon.width(), full.width());
         float ph = progress(cur.height(), icon.height(), full.height());
         float g = strength * ramp;
+        // Curvatura y estela solo en Profundidad: en los demás estilos, a cero.
+        out.tilt = out.curl = out.push = 0f;
+        java.util.Arrays.fill(out.vel, 0f);
+        if (style == STYLE_DEPTH) {
+            depth(cur, icon, full, dir, ramp, radius, iconReady, vel, pw, out);
+            return;
+        }
         if (style != STYLE_CLASSIC) {
             // Como Samsung (vídeo a cámara lenta): esté donde esté el icono, al abrir lo primero
             // sube rápido el borde de arriba y, al llegar, baja el resto; al cerrar, abajo entra
@@ -1438,15 +1797,19 @@ final class Genie {
             out.lag = cg;
             out.cup = 1f;
             out.radius = radius;
-            out.iconMix = iconReady ? 1f - smooth((pw - ICON_MIX_END) / (ICON_MIX_START - ICON_MIX_END)) : 0f;
-            out.splashIcon = iconReady ? SPLASH_ICON : 0f;
+            out.iconMix = iconMix(pw, dir, iconReady);
+            out.splashIcon = 0f;
             out.bend = bend;
             out.flip = flip;
             return;
         }
         out.cup = 0f;
         float lead = 1f / (1f + LEAD * g), lag = 1f + LAG * g;
-        float far = (float) Math.pow(ph, lead) - ph, near = (float) Math.pow(ph, lag) - ph;
+        // Cerca del icono la deformación se apaga (como en la copa, CUP_FADE): q^lead tiene
+        // pendiente infinita en 0 y, sin esto, al empezar a abrir el extremo lejano saltaba de
+        // golpe y al acabar de cerrar el genio llegaba al icono con un tirón. El shader hace lo mismo.
+        float env = smooth(ph / CUP_FADE);
+        float far = ((float) Math.pow(ph, lead) - ph) * env, near = ((float) Math.pow(ph, lag) - ph) * env;
         far *= lerp(1f, CLOSE_RISE, dir);
         // El extremo lejano (arriba, o abajo si el icono está arriba) se adelanta; el cercano se retrasa.
         cur.top += (full.top - icon.top) * lerp(far, near, flip) + lift * (1f - flip);
@@ -1463,10 +1826,20 @@ final class Genie {
         out.lead = lead;
         out.lag = lag;
         out.radius = radius;
-        out.iconMix = iconReady ? 1f - smooth((pw - ICON_MIX_END) / (ICON_MIX_START - ICON_MIX_END)) : 0f;
-        out.splashIcon = iconReady ? SPLASH_ICON : 0f;
+        out.iconMix = iconMix(pw, dir, iconReady);
+        out.splashIcon = 0f;
         out.bend = bend;
         out.flip = flip;
+    }
+
+    /**
+     * Cuánto es icono (1) y cuánto app (0) el genio con esta apertura; {@code dir} 0 = abrir,
+     * 1 = cerrar (en medio, al interrumpir). Ver {@link #OPEN_MIX_START}.
+     */
+    private static float iconMix(float pw, float dir, boolean iconReady) {
+        if (!iconReady) return 0f;
+        float start = lerp(OPEN_MIX_START, CLOSE_MIX_START, dir), end = lerp(OPEN_MIX_END, CLOSE_MIX_END, dir);
+        return 1f - smooth((pw - end) / (start - end));
     }
 
     /** Copa al derecho (0, icono en la parte de abajo) o al revés (1, icono arriba). */
@@ -1577,7 +1950,7 @@ final class Genie {
             float pw = progress(cur.width(), icon.width(), full.width());
             lastPw = pw;
             tmp.set(cur);
-            shape(tmp, icon, full, 1f, 1f, 0f, lerp(iconRadius, startRadius, pw), bend, flipFor(icon, full), iconReady, geo);
+            shape(tmp, icon, full, 1f, 1f, 0f, lerp(iconRadius, startRadius, pw), bend, flipFor(icon, full), iconReady, vel, geo);
             boolean ok = GlRenderer.drawGenie(content, true, geo, full.width() * 0.5f, full.height(), bg);
             if (arrived) {
                 Haptics.land();

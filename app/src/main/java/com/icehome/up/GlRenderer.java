@@ -68,6 +68,25 @@ final class GlRenderer {
      * Al fragment shader le llegan los bordes de su fila (vE) y la corrección por su pendiente (vD).
      * aRow = (posición de la fila 0..1, lado 0 = izquierdo / 1 = derecho).
      */
+    /**
+     * Profundidad: la ventana es una lámina que se inclina y se curva hacia el fondo, vista con
+     * una cámara. A una altura y0 de la lámina (px desde su centro, sin perspectiva) está a
+     * z = persp.z + persp.x·y0 + persp.y·y0² más lejos (en fracción de la distancia a la cámara):
+     * persp.x la inclina (arriba atrás o abajo atrás) y persp.y dobla los dos extremos hacia
+     * atrás, como una hoja que se curva. persp.z la empuja entera lo justo para que ningún punto
+     * quede más cerca que el rectángulo de MIUI: la ventana solo se aleja, nunca se sale de la
+     * pantalla. A esa altura todo se ve 1 / (1 + z) de grande. {@code unproject} es la cuenta al
+     * revés (de la pantalla a la lámina), exacta con la fórmula de segundo grado en su forma
+     * estable (sin dividir por persp.y, que puede ser 0).
+     */
+    private static final String PERSP =
+            "float shrink(float y0) { return 1.0 / (1.0 + persp.z + persp.x * y0 + persp.y * y0 * y0); }\n"
+            + "float project(float y0) { return y0 * shrink(y0); }\n"
+            + "float unproject(float yy) {\n"
+            + "  float a = 1.0 - yy * persp.x, b = 1.0 + persp.z;\n"
+            + "  return 2.0 * yy * b / max(a + sqrt(max(a * a - 4.0 * yy * yy * persp.y * b, 0.0)), 0.001);\n"
+            + "}\n";
+
     private static final String VERTEX =
             "attribute vec2 aRow;\n"
             + "uniform vec4 cur;\n"
@@ -79,8 +98,11 @@ final class GlRenderer {
             + "uniform float cup;\n"
             + "uniform float scale;\n"
             + "uniform vec2 buf;\n"
+            + "uniform vec3 persp;\n"
+            + "uniform vec4 vel;\n"
             + "varying vec2 vE;\n"
             + "varying vec2 vD;\n"
+            + PERSP
             + "vec2 row(float s) {\n"
             + "  float q = max(g.x, 0.0001);\n"
             + "  float n = mix(s, 1.0 - s, flip);\n"
@@ -99,8 +121,11 @@ final class GlRenderer {
             + "    cc += bend * (1.0 - n) * (1.0 - n);\n"
             + "    return vec2(cc - hc, cc + hc);\n"
             + "  }\n"
-            + "  float k = pow(q, mix(g.y, g.z, n));\n"
-            + "  float w = pow(q, max(g.z - 1.0, 0.0) * n * n);\n"
+            // Genio clásico: la misma desaparición cerca del icono (Genie.shape) para salir
+            // del icono y volver a él sin saltos.
+            + "  float envc = smoothstep(0.0, 0.12, q);\n"
+            + "  float k = mix(q, pow(q, mix(g.y, g.z, n)), envc);\n"
+            + "  float w = mix(1.0, pow(q, max(g.z - 1.0, 0.0) * n * n), envc);\n"
             + "  float c = mix((icon.x + icon.z) * 0.5, (cur.x + cur.z) * 0.5, w);\n"
             + "  c += bend * (1.0 - n) * (1.0 - n);\n"
             + "  float h = mix((icon.z - icon.x) * 0.5, fullHalf, k);\n"
@@ -108,13 +133,31 @@ final class GlRenderer {
             + "}\n"
             + "void main() {\n"
             + "  float h = max(cur.w - cur.y, 1.0);\n"
-            + "  float y = cur.y - 2.0 + aRow.x * (h + 4.0);\n"
+            // Margen de la malla: 2 px de antialias, más la mitad de la estela del desenfoque
+            // (si no, el borde desenfocado quedaría cortado).
+            + "  float mb = 2.0 + 0.5 * max(max(abs(vel.x), abs(vel.y)), max(abs(vel.z), abs(vel.w)));\n"
+            // Profundidad (cup = 2): la lámina inclinada y curvada, vista en perspectiva. Cada fila
+            // de la malla es una altura de la pantalla; su anchura es la de la lámina a esa altura
+            // (más lejos, más estrecha). El fragment shader hace la cuenta exacta en cada píxel.
+            + "  if (cup > 1.5) {\n"
+            + "    float cx = (cur.x + cur.z) * 0.5, cy = (cur.y + cur.w) * 0.5;\n"
+            + "    float hw = (cur.z - cur.x) * 0.5, hh = h * 0.5;\n"
+            + "    float yt = project(-hh), yb = project(hh);\n"
+            + "    float yd = cy + mix(yt - mb, yb + mb, aRow.x);\n"
+            + "    float y0 = clamp(unproject(yd - cy), -hh, hh);\n"
+            + "    float xd = cx + (aRow.y < 0.5 ? -1.0 : 1.0) * (hw * shrink(y0) + mb);\n"
+            + "    vE = vec2(0.0);\n"
+            + "    vD = vec2(1.0);\n"
+            + "    gl_Position = vec4(xd * scale / buf.x * 2.0 - 1.0, 1.0 - 2.0 * yd * scale / buf.y, 0.0, 1.0);\n"
+            + "    return;\n"
+            + "  }\n"
+            + "  float y = cur.y - mb + aRow.x * (h + 2.0 * mb);\n"
             + "  float s = clamp((y - cur.y) / h, 0.0, 1.0);\n"
             + "  vec2 e = row(s);\n"
             + "  vec2 e2 = row(clamp(s + 1.0 / h, 0.0, 1.0)) - e;\n"
             + "  vE = e;\n"
             + "  vD = vec2(inversesqrt(1.0 + e2.x * e2.x), inversesqrt(1.0 + e2.y * e2.y));\n"
-            + "  float x = aRow.y < 0.5 ? e.x - 2.0 : e.y + 2.0;\n"
+            + "  float x = aRow.y < 0.5 ? e.x - mb : e.y + mb;\n"
             + "  gl_Position = vec4(x * scale / buf.x * 2.0 - 1.0, 1.0 - 2.0 * y * scale / buf.y, 0.0, 1.0);\n"
             + "}\n";
 
@@ -130,20 +173,65 @@ final class GlRenderer {
             + "uniform vec4 bg;\n"
             + "uniform float scale;\n"
             + "uniform float bufH;\n"
+            // Profundidad: persp = inclinación, curvatura y empuje (ver PERSP); vel = lo que se mueve cada
+            // borde (izquierdo, arriba, derecho, abajo) mientras «el obturador está abierto».
+            // En los demás estilos los dos son 0 y todo queda como antes.
+            + "uniform float cup;\n"
+            + "uniform vec3 persp;\n"
+            + "uniform vec4 vel;\n"
             + "varying vec2 vE;\n"
             + "varying vec2 vD;\n"
+            + PERSP
             + "void main() {\n"
             + "  vec2 p = vec2(gl_FragCoord.x, bufH - gl_FragCoord.y) / scale;\n"
-            + "  float h = max(cur.w - cur.y, 1.0);\n"
-            + "  float s = clamp((p.y - cur.y) / h, 0.0, 1.0);\n"
-            + "  float dx = min((p.x - vE.x) * vD.x, (vE.y - p.x) * vD.y);\n"
-            + "  float dy = min(p.y - cur.y, cur.w - p.y);\n"
-            + "  float rad = min(g.w, min((vE.y - vE.x) * 0.5, h * 0.5));\n"
-            + "  float d = (dx < rad && dy < rad) ? rad - length(vec2(rad - dx, rad - dy)) : min(dx, dy);\n"
-            + "  float a = clamp(d * scale + 0.5, 0.0, 1.0);\n"
+            + "  float wE, h, u, s, d;\n"
+            + "  if (cup > 1.5) {\n"
+            // Profundidad: de la pantalla al punto de la lámina (y0, x0), y allí, como siempre,
+            // la distancia al borde redondeado. Se pasa a píxeles de pantalla con la escala de
+            // esa altura (k), para que el antialias sea de un píxel también lejos.
+            + "    float cx = (cur.x + cur.z) * 0.5, cy = (cur.y + cur.w) * 0.5;\n"
+            + "    float hw = max((cur.z - cur.x) * 0.5, 0.5), hh = max((cur.w - cur.y) * 0.5, 0.5);\n"
+            + "    float y0 = unproject(p.y - cy);\n"
+            + "    float k = shrink(y0);\n"
+            + "    float x0 = (p.x - cx) / k;\n"
+            + "    wE = 2.0 * hw * k;\n"
+            + "    h = 2.0 * hh * k;\n"
+            + "    u = clamp(x0 / (2.0 * hw) + 0.5, 0.0, 1.0);\n"
+            + "    s = clamp(y0 / (2.0 * hh) + 0.5, 0.0, 1.0);\n"
+            + "    float dx = hw - abs(x0), dy = hh - abs(y0);\n"
+            + "    float rad = min(g.w, min(hw, hh));\n"
+            + "    d = ((dx < rad && dy < rad) ? rad - length(vec2(rad - dx, rad - dy)) : min(dx, dy)) * k;\n"
+            + "  } else {\n"
+            + "    wE = max(vE.y - vE.x, 1.0);\n"
+            + "    u = clamp((p.x - vE.x) / wE, 0.0, 1.0);\n"
+            + "    h = max(cur.w - cur.y, 1.0);\n"
+            + "    s = clamp((p.y - cur.y) / h, 0.0, 1.0);\n"
+            + "    float dx = min((p.x - vE.x) * vD.x, (vE.y - p.x) * vD.y);\n"
+            + "    float dy = min(p.y - cur.y, cur.w - p.y);\n"
+            + "    float rad = min(g.w, min(wE * 0.5, h * 0.5));\n"
+            + "    d = (dx < rad && dy < rad) ? rad - length(vec2(rad - dx, rad - dy)) : min(dx, dy);\n"
+            + "  }\n"
+            // Lo que se mueve este punto: mezcla de la velocidad de los bordes según dónde está.
+            // Así, al crecer, cada borde se desenfoca hacia fuera (un zoom) y el centro casi nada.
+            + "  vec2 mv = vec2(mix(vel.x, vel.z, u), mix(vel.y, vel.w, s));\n"
+            + "  float ml = length(mv);\n"
+            // El borde también se desenfoca: el antialias se ensancha con la estela.
+            + "  float a = clamp(d / max(1.0 / scale, ml * 0.5) + 0.5, 0.0, 1.0);\n"
             + "  if (a <= 0.0) { gl_FragColor = vec4(0.0); return; }\n"
-            + "  float u = clamp((p.x - vE.x) / max(vE.y - vE.x, 1.0), 0.0, 1.0);\n"
-            + "  vec4 col = CONTENT(u, s);\n"
+            + "  vec4 col;\n"
+            + "  if (ml * scale < 1.5) {\n"
+            + "    col = CONTENT(u, s);\n"
+            + "  } else {\n"
+            // Desenfoque de movimiento: 8 muestras a lo largo de la estela, centradas en el punto
+            // (de −0,5 a +0,5 del recorrido). Es lo que haría una cámara con el obturador abierto.
+            + "    vec2 duv = mv / vec2(wE, h);\n"
+            + "    col = vec4(0.0);\n"
+            + "    for (int i = 0; i < 8; i++) {\n"
+            + "      float t = float(i) / 7.0 - 0.5;\n"
+            + "      col += CONTENT(clamp(u - duv.x * t, 0.0, 1.0), clamp(s - duv.y * t, 0.0, 1.0));\n"
+            + "    }\n"
+            + "    col *= 0.125;\n"
+            + "  }\n"
             + "  col = col + bg * (1.0 - col.a);\n"
             + "  if (iconMix > 0.0) { col = mix(col, texture2D(iconTex, vec2(u, s)), iconMix); }\n"
             + "  gl_FragColor = col * a;\n"
@@ -202,6 +290,17 @@ final class GlRenderer {
         float cup;
         /** Con captura: 1 = solo la captura; menos, fundida con la pantalla provisional. */
         float fade = 1f;
+        /** Profundidad: inclinación (1/px), curvatura (1/px²) y empuje hacia el fondo de la lámina (ver PERSP). 0 = plana. */
+        float tilt, curl, push;
+        /**
+         * Profundidad, antes del muelle (Genie): inclinación pedida por la velocidad, con la que
+         * sale al abrir, y cuánto se deja (0 = plana: junto al icono o a pantalla completa).
+         */
+        float tiltTarget, tiltStart, tiltEnv = 1f;
+        /** Profundidad: inclinación máxima que cabe sin que el borde cercano se salga de la pantalla. */
+        float tiltRoom = 1f;
+        /** Profundidad: lo que se mueve cada borde (izq., arriba, der., abajo) con el obturador abierto, en px. */
+        final float[] vel = new float[4];
     }
 
     static String fragment(boolean window) {
@@ -712,7 +811,9 @@ final class GlRenderer {
                 GLES20.glUniform1f(p.fade, g.fade);
             }
             float half = g.splashIcon * 0.5f;
-            GLES20.glUniform3f(p.splash, half, half * (2f * fullHalf) / Math.max(1f, fullH),
+            // Icono cuadrado aunque la tarjeta no tenga la forma de la pantalla (al abrir es más
+            // ancha de proporción): la mitad en v sale de la proporción actual de la tarjeta.
+            GLES20.glUniform3f(p.splash, half, half * Math.max(1f, g.cur.width()) / Math.max(1f, g.cur.height()),
                     g.splashIcon > 0f ? 1f : 0f);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, c.iconTexture);
@@ -722,13 +823,18 @@ final class GlRenderer {
             GLES20.glUniform4f(p.g, g.pw, g.lead, g.lag, g.radius);
             GLES20.glUniform1f(p.iconMix, g.iconMix);
             GLES20.glUniform1f(p.fullHalf, fullHalf);
-            GLES20.glUniform4f(p.bg, ((bg >> 16) & 255) / 255f, ((bg >> 8) & 255) / 255f, (bg & 255) / 255f, 1f);
+            // Color de la app bajo el contenido, premultiplicado (transparente al cerrar: ver Genie).
+            float bgA = (bg >>> 24) / 255f;
+            GLES20.glUniform4f(p.bg, ((bg >> 16) & 255) / 255f * bgA, ((bg >> 8) & 255) / 255f * bgA,
+                    (bg & 255) / 255f * bgA, bgA);
             GLES20.glUniform1f(p.scale, scale);
             GLES20.glUniform1f(p.bufH, height);
             GLES20.glUniform2f(p.buf, width, height);
             GLES20.glUniform1f(p.bend, g.bend);
             GLES20.glUniform1f(p.flip, g.flip);
             GLES20.glUniform1f(p.cup, g.cup);
+            GLES20.glUniform3f(p.persp, g.tilt, g.curl, g.push);
+            GLES20.glUniform4f(p.vel, g.vel[0], g.vel[1], g.vel[2], g.vel[3]);
             mesh.position(0);
             GLES20.glEnableVertexAttribArray(p.pos);
             GLES20.glVertexAttribPointer(p.pos, 2, GLES20.GL_FLOAT, false, 0, mesh);
@@ -874,7 +980,8 @@ final class GlRenderer {
 
     /** Un programa con sus uniformes. */
     private static final class Program {
-        final int id, pos, content, texM, iconTex, splash, fade, bend, flip, cup, buf, cur, icon, g, iconMix, fullHalf, bg, scale, bufH;
+        final int id, pos, content, texM, iconTex, splash, fade, bend, flip, cup, buf, cur, icon, g, iconMix, fullHalf, bg, scale, bufH,
+                persp, vel;
 
         Program(String fragment) {
             int vertex = compile(GLES20.GL_VERTEX_SHADER, VERTEX);
@@ -916,6 +1023,8 @@ final class GlRenderer {
             bg = u("bg");
             scale = u("scale");
             bufH = u("bufH");
+            persp = u("persp");
+            vel = u("vel");
         }
 
         private int u(String name) {

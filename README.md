@@ -6,7 +6,7 @@
 
 <p align="center">
   Animations and liquid glass for HyperOS · LSPosed module<br>
-  <b>v1.0.8-poco</b> · <a href="README.es.md">Español</a>
+  <b>v2.5.0-poco</b> · <a href="README.es.md">Español</a>
 </p>
 
 ---
@@ -57,11 +57,14 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
     <th>Curtain between screens</th>
     <th>Liquid-glass control center<br><sub>with the Mods Center iOS Control Center</sub></th>
     <th>The app</th>
+    <th>General view(smooth video)</th>
   </tr>
   <tr>
     <td><a href="docs/media/curtain.mp4"><img src="docs/media/curtain.gif" width="240" alt="Curtain transition"></a></td>
     <td><a href="docs/media/cc.mp4"><img src="docs/media/cc.gif" width="240" alt="Liquid-glass control center"></a></td>
     <td><a href="docs/media/settings-app.mp4"><img src="docs/media/settings-app.jpg" width="240" alt="HyperSpring settings app"></a></td>
+    <td><a href="docs/media/demo-sin-wifi.mp4"><img src="docs/media/demo-sin-wifi.mp4" width="400" alt="HyperSpring effect general view"></a></td>
+
   </tr>
 </table>
 
@@ -73,7 +76,7 @@ It doesn't modify any APK: everything runs through LSPosed. Sliders apply live f
 |---|---|
 | **System** | HyperOS 2 or 3 (Android 13 or newer). The glass and refraction need Android 13+. |
 | **Root** | Magisk, KernelSU or APatch. Grant root to the HyperSpring app so the restart buttons work instantly. |
-| **LSPosed** | LSPosed (Zygisk) or a current fork such as JingMatrix/Vector. Xposed API 93+. |
+| **LSPosed** | A framework with libxposed API 101+ such as JingMatrix/Vector 2.x (`HyperSpring.apk`), or an older LSPosed with Xposed API 93 (`HyperSpring-legacy.apk`). |
 | **Scopes** | `com.miui.home` (System launcher) and `com.android.systemui` (System UI). If LSPosed lists it, also tick `miui.systemui.plugin`. |
 
 ### Tested with
@@ -141,16 +144,14 @@ See [`docs/POCO-PORT.md`](docs/POCO-PORT.md) for the detailed compatibility repo
 
 ## Installation
 
-1. Install the APK from [Releases](../../releases).
+1. Install the APK from [Releases](../../releases): `HyperSpring.apk` on Vector and other current frameworks (libxposed API 102), `HyperSpring-legacy.apk` on older LSPosed builds.
 2. In LSPosed, enable **HyperSpring** and tick the **System launcher** and **System UI** scopes.
 3. Reboot.
 4. Open HyperSpring and grant root when asked (it's only used to restart the launcher and System UI).
 5. In **About → Compatibility**, every part should show **Active**.
 
-### Coming from Ice Home, Telón or KashiPlus
-HyperSpring merges those three modules into one.
-- **Ice Home:** HyperSpring installs over it and keeps your settings, because it uses the same package (`com.icehome.up`).
-- **Telón and KashiPlus:** uninstall them and remove them from LSPosed. While they're installed, HyperSpring doesn't load that part (two hooks on the same thing would break System UI), and the app tells you so.
+### Coming from Ice Home
+HyperSpring installs over it and keeps your settings, because it uses the same package (`com.icehome.up`). LSPosed does **not** tick the new scope by itself: check that both are ticked.
 
 ### Updating
 1. Install the new version over the old one.
@@ -183,21 +184,21 @@ If the phone doesn't boot properly, disable the module in LSPosed, or boot into 
 - **Without the SDK:** `TOOLS=/path bash local-build/build.sh`.
   - Uses JDK 17, the API 35 `android.jar`, jadx (D8), apktool (aapt2) and uber-apk-signer.
   - The version comes from `Version.java`.
-  - The APK ends up in `local-build/out/HyperSpring.apk`.
+  - The APKs end up in `local-build/out/`: `HyperSpring.apk` (libxposed API 102) and `HyperSpring-legacy.apk` (API 93).
 - **Shader checks:** the AGSL shaders are validated with skia-python before building, and the OpenGL ones with Mesa (scripts in `local-build/`).
 
 ### Layout
 - `com.icehome.up`:
   - Launcher features: genie, recents, folders, widget stack.
   - The app: settings, glass bar, translations (`I18n`) and settings provider.
-  - LSPosed entry point (`MainHook`).
+  - Entry points: `ModernEntry` (libxposed API 102) and `LegacyEntry` (API 93); both hand over to `MainHook`. Hooks go through the facade in `xp/`.
 - `com.icehome.up.telon`: curtain transitions and the System UI safe mode.
 - `com.icehome.up.cc`: control center liquid glass.
 - [`docs/TECHNICAL.md`](docs/TECHNICAL.md): how each animation works and which methods are hooked (in Spanish).
 
 ## Roadmap
 
-Coming next: global elastic bounce, more recents styles, wallpaper effects, settings that apply without restarting (libxposed API 102), an in-app preview, presets and more. See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/olilio3/HyperSpring/issues).
+Coming next: hot reload on libxposed API 102, springy folders on the stock launcher and full POCO Launcher support (springy folders and widget stack). See the full list in [`docs/ROADMAP.md`](docs/ROADMAP.md). Ideas and requests are welcome in [Issues](https://github.com/ToolDroidYT/HyperSpring/issues).
 
 ## Credits
 

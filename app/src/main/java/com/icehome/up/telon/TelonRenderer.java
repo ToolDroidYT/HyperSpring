@@ -329,7 +329,7 @@ final class TelonRenderer {
         try {
             initContext();
             SurfaceControl sc = new SurfaceControl.Builder()
-                    .setName("Telon")
+                    .setName("HyperSpring-curtain")
                     .setBufferSize(bw, bh)
                     .setFormat(PixelFormat.TRANSLUCENT)
                     .setOpaque(false)
